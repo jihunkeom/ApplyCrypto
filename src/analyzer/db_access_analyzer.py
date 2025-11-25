@@ -59,11 +59,32 @@ class DBAccessAnalyzer:
             self.access_tables = config_manager.access_tables
         
         # 테이블별 칼럼 매핑 생성 (대소문자 무시)
+        # 칼럼 정보: {column_name: {"new_column": bool}}
         self.table_column_map: Dict[str, Set[str]] = {}
+        self.table_column_info: Dict[str, Dict[str, Dict[str, Any]]] = {}  # table_name -> {column_name: {"new_column": bool}}
+        
         for table_info in self.access_tables:
             table_name = table_info.get("table_name", "").lower()
-            columns = {col.lower() for col in table_info.get("columns", [])}
-            self.table_column_map[table_name] = columns
+            columns_set = set()
+            column_info_dict = {}
+            
+            for col in table_info.get("columns", []):
+                if isinstance(col, str):
+                    # 문자열 형식: "column_name"
+                    col_name = col.lower()
+                    columns_set.add(col_name)
+                    column_info_dict[col_name] = {"new_column": False}
+                elif isinstance(col, dict):
+                    # 객체 형식: {"name": "column_name", "new_column": true}
+                    col_name = col.get("name", "").lower()
+                    if col_name:
+                        columns_set.add(col_name)
+                        column_info_dict[col_name] = {
+                            "new_column": col.get("new_column", False)
+                        }
+            
+            self.table_column_map[table_name] = columns_set
+            self.table_column_info[table_name] = column_info_dict
     
     def analyze(
         self,
@@ -86,9 +107,23 @@ class DBAccessAnalyzer:
         
         for table_config in self.access_tables:
             table_name = table_config.get("table_name", "").lower()
-            columns = {col.lower() for col in table_config.get("columns", [])}
             
             if not table_name:
+                continue
+            
+            # 칼럼 목록 추출 (문자열 또는 객체 형식 모두 지원)
+            columns = set()
+            for col in table_config.get("columns", []):
+                if isinstance(col, str):
+                    columns.add(col.lower())
+                elif isinstance(col, dict):
+                    col_name = col.get("name", "")
+                    if col_name:
+                        columns.add(col_name.lower())
+            
+            # 규칙 1: 테이블만 있고 칼럼 정보가 없는 테이블은 무시
+            if not columns:
+                self.logger.debug(f"테이블 '{table_name}'은 칼럼 정보가 없어 무시됩니다.")
                 continue
             
             # 테이블별 접근 정보 수집
@@ -207,11 +242,16 @@ class DBAccessAnalyzer:
                 if result.get("error"):
                     continue
                 
-                # SQL 쿼리 중 설정된 테이블의 칼럼을 사용하는 쿼리 수집
+                # SQL 쿼리 중 설정된 테이블을 사용하는 쿼리 수집
+                # 규칙에 따라 쿼리 필터링:
+                # - new_column=false인 칼럼 중 하나 이상 사용되는 쿼리 포함
+                # - new_column=true인 칼럼이 있으면 테이블만 사용되면 포함 (칼럼 사용 여부 무관)
+                false_columns, true_columns = self._get_column_groups(table_name, columns)
                 matching_queries = self._find_matching_sql_queries(
                     result.get("sql_queries", []),
                     table_name,
-                    columns
+                    false_columns,
+                    true_columns
                 )
                 
                 if not matching_queries:
@@ -269,6 +309,19 @@ class DBAccessAnalyzer:
         # 칼럼 목록 추출 (SQL 쿼리에서 사용된 칼럼)
         used_columns = self._extract_used_columns(sql_queries, table_name, columns)
         
+        # 칼럼 정보 생성 (config.json에 설정된 모든 칼럼 포함)
+        # SQL 쿼리에서 사용된 칼럼은 실제로 사용된 것으로 표시
+        columns_list = []
+        table_lower = table_name.lower()
+        column_info_dict = self.table_column_info.get(table_lower, {})
+        
+        # config.json에 설정된 모든 칼럼을 포함
+        for col_name, col_info in sorted(column_info_dict.items()):
+            columns_list.append({
+                "name": col_name,
+                "new_column": col_info.get("new_column", False)
+            })
+        
         # layer_files를 딕셔너리로 변환 (Set -> List)
         layer_files_dict = {
             layer: sorted(list(files))
@@ -277,7 +330,7 @@ class DBAccessAnalyzer:
         
         table_access_info = TableAccessInfo(
             table_name=table_name,
-            columns=sorted(list(used_columns)),
+            columns=columns_list,  # 칼럼 정보 목록 (칼럼명과 new_column 정보 포함)
             access_files=sorted(list(all_access_files)),
             query_type=sql_queries[0].get("query_type", "SELECT") if sql_queries else "SELECT",
             sql_query=sql_queries[0].get("sql", "") if sql_queries else None,
@@ -288,22 +341,60 @@ class DBAccessAnalyzer:
         
         return table_access_info
     
+    def _get_column_groups(
+        self,
+        table_name: str,
+        columns: Set[str]
+    ) -> tuple[Set[str], Set[str]]:
+        """
+        칼럼을 new_column 값에 따라 그룹화
+        
+        Args:
+            table_name: 테이블명
+            columns: 전체 칼럼 목록
+            
+        Returns:
+            tuple[Set[str], Set[str]]: (new_column=false인 칼럼 목록, new_column=true인 칼럼 목록)
+        """
+        table_lower = table_name.lower()
+        column_info_dict = self.table_column_info.get(table_lower, {})
+        
+        false_columns = set()  # new_column=false인 칼럼
+        true_columns = set()   # new_column=true인 칼럼
+        
+        for col in columns:
+            col_lower = col.lower()
+            col_info = column_info_dict.get(col_lower, {"new_column": False})
+            if col_info.get("new_column", False):
+                true_columns.add(col_lower)
+            else:
+                false_columns.add(col_lower)
+        
+        return false_columns, true_columns
+    
     def _find_matching_sql_queries(
         self,
         sql_queries: List[Dict[str, Any]],
         table_name: str,
-        columns: Set[str]
+        false_columns: Set[str],
+        true_columns: Set[str]
     ) -> List[Dict[str, Any]]:
         """
-        SQL 쿼리 중 설정된 테이블의 칼럼을 사용하는 쿼리 찾기
+        SQL 쿼리 중 설정된 테이블을 사용하는 쿼리 찾기
         
         Args:
             sql_queries: SQL 쿼리 목록
             table_name: 테이블명
-            columns: 칼럼 목록
+            false_columns: new_column=false인 칼럼 목록
+            true_columns: new_column=true인 칼럼 목록
             
         Returns:
             List[Dict[str, Any]]: 매칭되는 SQL 쿼리 목록
+            
+        규칙:
+            - 테이블명이 일치해야 함
+            - new_column=false인 칼럼이 있으면: 그 중 하나 이상 사용되는 쿼리만 포함
+            - new_column=true인 칼럼이 있으면: 테이블만 사용되면 포함 (칼럼 사용 여부 무관)
         """
         matching_queries = []
         
@@ -317,13 +408,20 @@ class DBAccessAnalyzer:
             if table_name.lower() not in {t.lower() for t in tables}:
                 continue
             
-            # 칼럼 확인 (하나 이상의 칼럼이 사용되는지)
+            # SQL에서 칼럼 추출
             sql_columns = self.sql_strategy.extract_column_names(sql, table_name)
             sql_columns_lower = {c.lower() for c in sql_columns}
             
-            # 설정된 칼럼 중 하나 이상이 사용되는지 확인
-            if columns.intersection(sql_columns_lower):
-                matching_queries.append(sql_query_info)
+            # 규칙 2: new_column=false인 칼럼이 있으면 그 중 하나 이상 사용되는 쿼리만 포함
+            if false_columns:
+                if not false_columns.intersection(sql_columns_lower):
+                    # new_column=false인 칼럼이 하나도 사용되지 않으면 제외
+                    continue
+            
+            # 규칙 3: new_column=true인 칼럼이 있으면 테이블만 사용되면 포함 (칼럼 사용 여부 무관)
+            # 테이블명이 일치하면 이미 포함됨 (위에서 확인 완료)
+            
+            matching_queries.append(sql_query_info)
         
         return matching_queries
     

@@ -61,7 +61,23 @@ class ConfigurationManager:
                         "columns": {
                             "type": "array",
                             "items": {
+                                "oneOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {
                                 "type": "string"
+                                            },
+                                            "new_column": {
+                                                "type": "boolean"
+                                            }
+                                        },
+                                        "required": ["name"]
+                                    }
+                                ]
                             }
                         }
                     }
