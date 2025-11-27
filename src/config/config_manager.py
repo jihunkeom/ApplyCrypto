@@ -84,6 +84,11 @@ class ConfigurationManager:
                 },
                 "description": "암호화 대상 테이블 및 칼럼 정보"
             },
+            "llm_provider": {
+                "type": "string",
+                "enum": ["watsonx_ai", "claude_ai", "openai"],
+                "description": "사용할 LLM 프로바이더 (기본값: watsonx_ai)"
+            },
             "exclude_dirs": {
                 "type": "array",
                 "items": {
@@ -280,6 +285,19 @@ class ConfigurationManager:
             return []
         
         return self._config_data.get("exclude_files", [])
+    
+    @property
+    def llm_provider(self) -> str:
+        """
+        LLM 프로바이더 이름을 반환합니다.
+        
+        Returns:
+            str: LLM 프로바이더 이름 ("watsonx_ai", "watsonx", "openai" 중 하나, 기본값: "watsonx_ai")
+        """
+        if self._config_data is None:
+            return "watsonx_ai"
+        
+        return self._config_data.get("llm_provider", "watsonx_ai")
     
     def get(self, key: str, default: Any = None) -> Any:
         """

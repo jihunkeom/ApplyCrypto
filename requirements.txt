@@ -25,6 +25,7 @@ tqdm>=4.66.0
 # LLM 프로바이더 (선택적)
 ibm-watsonx-ai>=1.0.0  # WatsonX.AI 사용 시
 # openai>=1.0.0  # OpenAI 사용 시
+anthropic>=0.18.0  # Claude AI 사용 시
 
 # 테스트 프레임워크
 pytest>=8.0.0

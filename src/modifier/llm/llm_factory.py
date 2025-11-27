@@ -11,6 +11,7 @@ from typing import Optional
 from .llm_provider import LLMProvider
 from .watsonx_provider import WatsonXAIProvider
 from .openai_provider import OpenAIProvider
+from .claude_ai_provider import ClaudeAIProvider
 
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ def create_llm_provider(provider_name: str) -> LLMProvider:
     필요한 credential 정보는 환경변수에서 가져옵니다.
     
     Args:
-        provider_name: 프로바이더 이름 ("watsonx_ai" 또는 "openai")
+        provider_name: 프로바이더 이름 ("watsonx_ai", "openai", "claude_ai")
         
     Returns:
         LLMProvider: 생성된 LLM 프로바이더 인스턴스
@@ -71,9 +72,24 @@ def create_llm_provider(provider_name: str) -> LLMProvider:
             model_id=model_id
         )
     
+    elif provider_name_lower == "claude_ai":
+        # 환경변수에서 credential 정보 가져오기
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        model_id = os.getenv("ANTHROPIC_MODEL_ID", "claude-sonnet-4-20250514")
+        
+        if not api_key:
+            raise LLMProviderError(
+                "Claude AI 프로바이더는 ANTHROPIC_API_KEY 환경변수가 필요합니다."
+            )
+        
+        return ClaudeAIProvider(
+            api_key=api_key,
+            model_id=model_id
+        )
+    
     else:
         raise LLMProviderError(
             f"지원하지 않는 LLM 프로바이더: {provider_name}. "
-            f"지원하는 프로바이더: watsonx_ai, openai"
+            f"지원하는 프로바이더: watsonx_ai, openai, claude_ai"
         )
 

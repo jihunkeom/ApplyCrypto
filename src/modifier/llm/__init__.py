@@ -7,12 +7,14 @@ LLM Provider 모듈
 from .llm_provider import LLMProvider
 from .watsonx_provider import WatsonXAIProvider
 from .openai_provider import OpenAIProvider
+from .claude_ai_provider import ClaudeAIProvider
 from .llm_factory import create_llm_provider
 
 __all__ = [
     'LLMProvider',
     'WatsonXAIProvider',
     'OpenAIProvider',
+    'ClaudeAIProvider',
     'create_llm_provider'
 ]
 

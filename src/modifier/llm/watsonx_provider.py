@@ -18,7 +18,7 @@ except ImportError:
 from .llm_provider import LLMProvider
 
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("applycrypto.code_patcher")
 
 
 class WatsonXAIProvider(LLMProvider):
