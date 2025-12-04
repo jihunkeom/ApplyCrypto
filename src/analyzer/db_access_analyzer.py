@@ -15,7 +15,7 @@ from ..parser.xml_mapper_parser import XMLMapperParser
 from ..parser.java_ast_parser import JavaASTParser
 from ..parser.call_graph_builder import CallGraphBuilder
 from ..config.config_manager import ConfigurationManager
-from .sql_parsing_strategy import SQLParsingStrategy, create_strategy
+from .sql_parsing_strategy import SQLParsingStrategy
 
 
 class DBAccessAnalyzer:
@@ -28,6 +28,7 @@ class DBAccessAnalyzer:
     def __init__(
         self,
         config_manager: ConfigurationManager,
+        sql_strategy: SQLParsingStrategy,
         xml_parser: Optional[XMLMapperParser] = None,
         java_parser: Optional[JavaASTParser] = None,
         call_graph_builder: Optional[CallGraphBuilder] = None
@@ -37,21 +38,17 @@ class DBAccessAnalyzer:
         
         Args:
             config_manager: 설정 매니저
-            xml_parser: XML Mapper 파서 (선택적)
+            sql_strategy: SQL 파싱 전략 (필수)
+            xml_parser: XML Mapper 파서 (선택적, 하위 호환성을 위해 유지)
             java_parser: Java AST 파서 (선택적)
             call_graph_builder: Call Graph Builder (선택적)
         """
         self.config_manager = config_manager
-        self.xml_parser = xml_parser or XMLMapperParser()
+        self.sql_strategy = sql_strategy
+        self.xml_parser = xml_parser  # 하위 호환성을 위해 유지하지만 사용하지 않음
         self.java_parser = java_parser or JavaASTParser()
         self.call_graph_builder = call_graph_builder
         self.logger = logging.getLogger(__name__)
-        
-        # SQL 파싱 전략 생성
-        sql_wrapping_type = config_manager.get("sql_wrapping_type", "mybatis")
-        if not sql_wrapping_type:
-            sql_wrapping_type = config_manager.sql_wrapping_type
-        self.sql_strategy = create_strategy(sql_wrapping_type)
         
         # 설정에서 테이블 정보 가져오기
         self.access_tables = config_manager.get("access_tables", [])
@@ -99,6 +96,16 @@ class DBAccessAnalyzer:
         Returns:
             List[TableAccessInfo]: 테이블 접근 정보 목록
         """
+        # sql_extraction_results.json에서 SQL 쿼리 정보 로드 (한 번만)
+        from ..persistence.data_persistence_manager import DataPersistenceManager
+        
+        persistence_manager = DataPersistenceManager(self.config_manager.target_project)
+        sql_extraction_results = persistence_manager.load_from_file("sql_extraction_results.json")
+        
+        if not sql_extraction_results:
+            self.logger.warning("sql_extraction_results.json을 찾을 수 없습니다. 먼저 analyze 명령어를 실행하세요.")
+            return []
+        
         # ClassInfo 목록 수집 (CallGraphBuilder에서 재사용)
         class_info_map = self._collect_class_info_map(source_files)
         
@@ -131,7 +138,8 @@ class DBAccessAnalyzer:
                 table_name,
                 columns,
                 source_files,
-                class_info_map
+                class_info_map,
+                sql_extraction_results
             )
             
             if table_info:
@@ -211,7 +219,8 @@ class DBAccessAnalyzer:
         table_name: str,
         columns: Set[str],
         source_files: List[SourceFile],
-        class_info_map: Dict[str, List[Dict[str, Any]]]
+        class_info_map: Dict[str, List[Dict[str, Any]]],
+        sql_extraction_results: List[Dict[str, Any]]
     ) -> Optional[TableAccessInfo]:
         """
         특정 테이블에 대한 접근 정보 분석
@@ -221,12 +230,11 @@ class DBAccessAnalyzer:
             columns: 칼럼 목록
             source_files: 소스 파일 목록
             class_info_map: 클래스 정보 매핑
+            sql_extraction_results: SQL 추출 결과 목록
             
         Returns:
             Optional[TableAccessInfo]: 테이블 접근 정보
         """
-        # XML 파일 목록
-        xml_files = [f for f in source_files if f.extension == ".xml"]
         
         # 수집된 정보
         sql_queries: List[Dict[str, Any]] = []
@@ -235,63 +243,83 @@ class DBAccessAnalyzer:
         layer_files: Dict[str, Set[str]] = defaultdict(set)  # layer -> file_paths
         all_added_files: Set[str] = set()  # 모든 레이어에 추가된 파일 추적 (중복 방지용)
         
-        # 각 XML 파일에 대해 분석
-        for xml_file in xml_files:
-            try:
-                result = self.xml_parser.parse_mapper_file(xml_file.path)
-                if result.get("error"):
-                    continue
+        # 각 파일의 SQL 쿼리에 대해 분석
+        for file_result in sql_extraction_results:
+            file_info = file_result.get("file", {})
+            file_path = file_info.get("path", "")
+            
+            # SQL 쿼리 중 설정된 테이블을 사용하는 쿼리 수집
+            # 규칙에 따라 쿼리 필터링:
+            # - new_column=false인 칼럼 중 하나 이상 사용되는 쿼리 포함
+            # - new_column=true인 칼럼이 있으면 테이블만 사용되면 포함 (칼럼 사용 여부 무관)
+            false_columns, true_columns = self._get_column_groups(table_name, columns)
+            matching_queries = self._find_matching_sql_queries(
+                file_result.get("sql_queries", []),
+                table_name,
+                false_columns,
+                true_columns
+            )
+            
+            if not matching_queries:
+                continue
+            
+            # 각 SQL 쿼리에 대해 처리
+            for sql_query_info in matching_queries:
+                sql_queries.append(sql_query_info)
                 
-                # SQL 쿼리 중 설정된 테이블을 사용하는 쿼리 수집
-                # 규칙에 따라 쿼리 필터링:
-                # - new_column=false인 칼럼 중 하나 이상 사용되는 쿼리 포함
-                # - new_column=true인 칼럼이 있으면 테이블만 사용되면 포함 (칼럼 사용 여부 무관)
-                false_columns, true_columns = self._get_column_groups(table_name, columns)
-                matching_queries = self._find_matching_sql_queries(
-                    result.get("sql_queries", []),
-                    table_name,
-                    false_columns,
-                    true_columns
-                )
+                # strategy_specific에서 정보 추출 (전략별로 다름)
+                strategy_specific = sql_query_info.get("strategy_specific", {})
+                strategy_type = type(self.sql_strategy).__name__
                 
-                if not matching_queries:
-                    continue
-                
-                # 각 SQL 쿼리에 대해 처리
-                for sql_query_info in matching_queries:
-                    sql_queries.append(sql_query_info)
-                    
-                    # 5. namespace의 full class 추출 → interface 파일 목록에 추가
-                    namespace = sql_query_info.get("namespace", "")
+                if strategy_type == "MyBatisStrategy":
+                    # MyBatis: namespace와 result_type 사용
+                    namespace = strategy_specific.get("namespace", "")
                     if namespace:
                         interface_file = self._find_class_file(namespace, class_info_map)
                         if interface_file and interface_file not in all_added_files:
                             interface_files.add(interface_file)
-                            layer_files["interface"].add(interface_file)
+                            layer_files["Repository"].add(interface_file)
                             all_added_files.add(interface_file)
                     
-                    # 6. result_type의 full class 추출 → dao 파일 목록에 추가
-                    result_type = sql_query_info.get("result_type")
+                    result_type = strategy_specific.get("result_type")
                     if result_type:
                         dao_file = self._find_class_file(result_type, class_info_map)
                         if dao_file and dao_file not in all_added_files:
                             dao_files.add(dao_file)
-                            layer_files["dao"].add(dao_file)
+                            layer_files["Repository"].add(dao_file)
                             all_added_files.add(dao_file)
                     
-                    # 7. namespace의 class_name + sql query의 id로 method string 조합
+                    # namespace의 class_name + sql query의 id로 method string 조합
                     method_string = self._build_method_string(namespace, sql_query_info.get("id", ""))
+                elif strategy_type in ["JDBCStrategy", "JPAStrategy"]:
+                    # JDBC/JPA: method_name 사용
+                    method_name = strategy_specific.get("method_name", "")
+                    file_path_str = strategy_specific.get("file_path", file_path)
                     
-                    if method_string and self.call_graph_builder and self.call_graph_builder.call_graph:
-                        # 8-9. Call Graph에서 역방향으로 탐색하여 상위 layer 파일 찾기
-                        upper_layer_files = self._find_upper_layer_files(method_string)
-                        for layer, file_path in upper_layer_files:
-                            if layer and file_path and file_path not in all_added_files:
-                                layer_files[layer].add(file_path)
-                                all_added_files.add(file_path)
-            
-            except Exception as e:
-                self.logger.error(f"XML 파일 분석 중 오류: {xml_file.path} - {e}")
+                    # 파일 경로에서 클래스 찾기
+                    method_string = None
+                    if file_path_str:
+                        # 파일 경로로 클래스 찾기
+                        for class_name, class_infos in class_info_map.items():
+                            for class_info in class_infos:
+                                if class_info["file_path"] == file_path_str:
+                                    method_string = f"{class_info['class_name']}.{method_name}"
+                                    break
+                            if method_string:
+                                break
+                    
+                    if not method_string:
+                        method_string = method_name
+                else:
+                    method_string = None
+                
+                if method_string and self.call_graph_builder and self.call_graph_builder.call_graph:
+                    # Call Graph에서 역방향으로 탐색하여 상위 layer 파일 찾기
+                    upper_layer_files = self._find_upper_layer_files(method_string)
+                    for layer, file_path in upper_layer_files:
+                        if layer and file_path and file_path not in all_added_files:
+                            layer_files[layer].add(file_path)
+                            all_added_files.add(file_path)
         
         # TableAccessInfo 생성
         if not sql_queries:

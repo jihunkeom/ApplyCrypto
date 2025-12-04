@@ -89,19 +89,30 @@ class CallGraphBuilder:
     REST API 엔드포인트부터 시작하는 호출 체인을 구성합니다.
     """
     
-    # Spring 어노테이션 패턴
+    # Spring 및 프레임워크 어노테이션 패턴
     SPRING_ANNOTATIONS = {
+        # Spring MVC
         'RequestMapping', 'GetMapping', 'PostMapping', 'PutMapping', 
         'DeleteMapping', 'PatchMapping', 'Controller', 'RestController',
-        'Service', 'Repository', 'Component'
+        # Spring Core
+        'Service', 'Repository', 'Component', 'Autowired', 'Qualifier',
+        # MyBatis
+        'Mapper', 'Select', 'Insert', 'Update', 'Delete', 'Param',
+        # JPA
+        'Entity', 'Table', 'Id', 'GeneratedValue', 'Column', 'OneToMany',
+        'ManyToOne', 'OneToOne', 'ManyToMany', 'JoinColumn', 'Query',
+        'NamedQuery', 'NamedQueries', 'EntityManager', 'PersistenceContext',
+        # JDBC 관련 (직접 사용하는 경우는 어노테이션이 없을 수 있음)
+        'Transactional'
     }
     
-    # 레이어 분류 패턴
+    # 레이어 분류 패턴 (MyBatis, JDBC, JPA 모두 지원)
     LAYER_PATTERNS = {
-        'Controller': ['Controller', 'RestController'],
-        'Service': ['Service'],
-        'DAO': ['DAO', 'Dao'],
-        'Repository': ['Repository', 'Mapper']
+        'Controller': ['Controller', 'RestController', 'WebController'],
+        'Service': ['Service', 'BusinessService', 'ApplicationService'],
+        'Repository': ['Repository', 'JpaRepository', 'CrudRepository', 'DAO', 'Dao', 'JdbcDao', 'JdbcTemplateDao'],
+        'Mapper': ['Mapper', 'MyBatisMapper', 'SqlMapper'],
+        'Entity': ['Entity', 'Domain', 'Model', 'POJO']
     }
     
     def __init__(self, java_parser: Optional[JavaASTParser] = None, cache_manager: Optional[CacheManager] = None):
@@ -288,46 +299,84 @@ class CallGraphBuilder:
     
     def _classify_layer(self, cls: ClassInfo, method: Method) -> str:
         """
-        클래스와 메서드의 레이어 분류
+        클래스와 메서드의 레이어 분류 (MyBatis, JDBC, JPA 모두 지원)
         
         Args:
             cls: 클래스 정보
             method: 메서드 정보
             
         Returns:
-            str: 레이어명 (Controller, Service, DAO, Repository, Unknown)
+            str: 레이어명 (Controller, Service, DAO, Repository, Mapper, Entity, Unknown)
         """
-        # 어노테이션 기반 분류
+        # 어노테이션 기반 분류 (우선순위 높음)
         all_annotations = cls.annotations + method.annotations
-        for annotation in all_annotations:
-            if 'Controller' in annotation or 'RestController' in annotation:
-                return 'Controller'
-            elif 'Service' in annotation:
-                return 'Service'
-            elif 'Repository' in annotation:
-                # @Repository는 Spring에서 DAO 레이어를 나타냄
-                return 'DAO'
+        annotation_lower = [ann.lower() for ann in all_annotations]
+        
+        # Controller 레이어
+        if any('controller' in ann or 'restcontroller' in ann for ann in annotation_lower):
+            return 'Controller'
+        
+        # Service 레이어
+        if any('service' in ann for ann in annotation_lower):
+            return 'Service'
+        
+        # MyBatis Mapper 레이어
+        if any('mapper' in ann for ann in annotation_lower):
+            return 'Mapper'
+        
+        # JPA Repository 레이어
+        if any('repository' in ann for ann in annotation_lower):
+            return 'Repository'
+        
+        # JPA Entity 레이어
+        if any('entity' in ann or 'table' in ann for ann in annotation_lower):
+            return 'Entity'
         
         # 클래스명 패턴 기반 분류
         class_name = cls.name
         for layer, patterns in self.LAYER_PATTERNS.items():
             for pattern in patterns:
                 if pattern in class_name:
-                    # Repository 패턴도 DAO로 매핑
-                    if layer == 'Repository':
-                        return 'DAO'
                     return layer
+        
+        # 인터페이스 기반 분류 (MyBatis Mapper 인터페이스 감지)
+        if cls.interfaces:
+            for interface in cls.interfaces:
+                interface_lower = interface.lower()
+                # MyBatis Mapper 인터페이스 패턴
+                if 'mapper' in interface_lower or 'sqlmapper' in interface_lower:
+                    return 'Mapper'
+                # JPA Repository 인터페이스 패턴
+                if 'repository' in interface_lower or 'jparepository' in interface_lower:
+                    return 'Repository'
+                # Spring Repository 인터페이스 패턴
+                if 'crudrepository' in interface_lower or 'pagerepository' in interface_lower:
+                    return 'Repository'
         
         # 패키지 기반 분류
         package = cls.package.lower()
-        if 'controller' in package:
+        if 'controller' in package or 'web' in package or 'api' in package:
             return 'Controller'
-        elif 'service' in package:
+        elif 'service' in package or 'business' in package:
             return 'Service'
-        elif 'dao' in package or 'repository' in package:
-            return 'DAO'
-        elif 'mapper' in package:
+        elif 'mapper' in package or 'mybatis' in package:
             return 'Mapper'
+        elif 'repository' in package or 'jpa' in package:
+            return 'Repository'
+        elif 'dao' in package or 'data' in package:
+            return 'DAO'
+        elif 'entity' in package or 'domain' in package or 'model' in package or 'beans' in package:
+            return 'Entity'
+        
+        # 필드 기반 추론 (JPA EntityManager, MyBatis SqlSession 등)
+        for field in cls.fields:
+            field_type = field.get("type", "").lower()
+            if 'entitymanager' in field_type or 'entitymanagerfactory' in field_type:
+                return 'Repository'  # JPA Repository로 추론
+            elif 'sqlsession' in field_type or 'sqlsessiontemplate' in field_type:
+                return 'Mapper'  # MyBatis Mapper로 추론
+            elif 'jdbctemplate' in field_type or 'datasource' in field_type:
+                return 'DAO'  # JDBC DAO로 추론
         
         return 'Unknown'
     

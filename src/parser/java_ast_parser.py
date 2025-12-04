@@ -104,7 +104,9 @@ class JavaASTParser:
         Args:
             cache_manager: 캐시 매니저 (선택적)
         """
+        import logging
         self.parser = Parser(JAVA_LANGUAGE)
+        self.logger = logging.getLogger(__name__)
         # cache_manager가 없으면 임시 디렉터리에 생성
         if cache_manager is None:
             from tempfile import mkdtemp
@@ -776,4 +778,231 @@ class JavaASTParser:
             for method in call_graph.keys():
                 print_call_tree(method)
                 print()
+    
+    def extract_jdbc_sql(self, file_path: Path) -> List[Dict[str, Any]]:
+        """
+        JDBC를 사용하는 Java 파일에서 SQL 쿼리 추출
+        
+        Args:
+            file_path: Java 파일 경로
+            
+        Returns:
+            List[Dict[str, Any]]: 추출된 SQL 쿼리 목록
+                각 항목은 {"id": str, "query_type": str, "sql": str, "strategy_specific": dict} 형태
+        """
+        sql_queries = []
+        
+        # 파일 읽기
+        source_code = None
+        encodings = ['utf-8', 'euc-kr', 'cp949', 'latin-1', 'iso-8859-1']
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    source_code = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+            except Exception:
+                continue
+        
+        if not source_code:
+            return sql_queries
+        
+        # JDBC 패턴 찾기: executeQuery, executeUpdate, prepareStatement 등
+        # prepareStatement("SELECT ...") 또는 executeQuery("SELECT ...") 패턴
+        jdbc_patterns = [
+            # prepareStatement("SQL")
+            (r'prepareStatement\s*\(\s*["\']([^"\']+)["\']', "SELECT"),
+            # executeQuery("SQL")
+            (r'executeQuery\s*\(\s*["\']([^"\']+)["\']', "SELECT"),
+            # executeUpdate("SQL")
+            (r'executeUpdate\s*\(\s*["\']([^"\']+)["\']', "UPDATE"),
+            # execute("SQL")
+            (r'execute\s*\(\s*["\']([^"\']+)["\']', "SELECT"),
+        ]
+        
+        # 메서드 내에서 SQL 문자열 찾기
+        # 메서드 시그니처 추출
+        method_pattern = r'(?:public|private|protected)?\s+\w+\s+(\w+)\s*\('
+        methods = re.finditer(method_pattern, source_code)
+        
+        for method_match in methods:
+            method_name = method_match.group(1)
+            method_start = method_match.start()
+            
+            # 메서드 끝 찾기 (다음 메서드 또는 클래스 끝)
+            next_method = re.search(r'(?:public|private|protected)?\s+\w+\s+\w+\s*\(', source_code[method_match.end():])
+            if next_method:
+                method_end = method_match.end() + next_method.start()
+            else:
+                method_end = len(source_code)
+            
+            method_body = source_code[method_start:method_end]
+            
+            # JDBC 패턴 매칭
+            for pattern, default_query_type in jdbc_patterns:
+                matches = re.finditer(pattern, method_body, re.IGNORECASE | re.DOTALL)
+                for match in matches:
+                    sql = match.group(1)
+                    # SQL 타입 자동 감지
+                    query_type = self._detect_query_type(sql)
+                    if not query_type:
+                        query_type = default_query_type
+                    
+                    sql_queries.append({
+                        "id": method_name,
+                        "query_type": query_type,
+                        "sql": sql.strip(),
+                        "strategy_specific": {
+                            "method_name": method_name,
+                            "file_path": str(file_path)
+                        }
+                    })
+        
+        return sql_queries
+    
+    def extract_jpa_sql(self, file_path: Path) -> List[Dict[str, Any]]:
+        """
+        JPA를 사용하는 Java 파일에서 JPQL/Native SQL 쿼리 추출
+        
+        Args:
+            file_path: Java 파일 경로
+            
+        Returns:
+            List[Dict[str, Any]]: 추출된 SQL 쿼리 목록
+                각 항목은 {"id": str, "query_type": str, "sql": str, "strategy_specific": dict} 형태
+        """
+        sql_queries = []
+        
+        # 파일 읽기
+        source_code = None
+        encodings = ['utf-8', 'euc-kr', 'cp949', 'latin-1', 'iso-8859-1']
+        
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    source_code = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+            except Exception:
+                continue
+        
+        if not source_code:
+            return sql_queries
+        
+        # JPA 패턴 찾기
+        # @Query("SELECT ...") 어노테이션
+        query_annotation_pattern = r'@Query\s*\(\s*value\s*=\s*["\']([^"\']+)["\']'
+        query_matches = re.finditer(query_annotation_pattern, source_code, re.IGNORECASE | re.DOTALL)
+        
+        for match in query_matches:
+            sql = match.group(1)
+            # 다음 메서드 찾기
+            method_start = match.end()
+            method_pattern = r'(?:public|private|protected)?\s+\w+\s+(\w+)\s*\('
+            method_match = re.search(method_pattern, source_code[method_start:])
+            
+            method_name = method_match.group(1) if method_match else "unknown"
+            query_type = self._detect_query_type(sql)
+            if not query_type:
+                query_type = "SELECT"
+            
+            sql_queries.append({
+                "id": method_name,
+                "query_type": query_type,
+                "sql": sql.strip(),
+                "strategy_specific": {
+                    "method_name": method_name,
+                    "file_path": str(file_path),
+                    "annotation": "@Query"
+                }
+            })
+        
+        # @NamedQuery 어노테이션
+        named_query_pattern = r'@NamedQuery\s*\(\s*name\s*=\s*["\']([^"\']+)["\']\s*,\s*query\s*=\s*["\']([^"\']+)["\']'
+        named_matches = re.finditer(named_query_pattern, source_code, re.IGNORECASE | re.DOTALL)
+        
+        for match in named_matches:
+            query_name = match.group(1)
+            sql = match.group(2)
+            query_type = self._detect_query_type(sql)
+            if not query_type:
+                query_type = "SELECT"
+            
+            sql_queries.append({
+                "id": query_name,
+                "query_type": query_type,
+                "sql": sql.strip(),
+                "strategy_specific": {
+                    "query_name": query_name,
+                    "file_path": str(file_path),
+                    "annotation": "@NamedQuery"
+                }
+            })
+        
+        # EntityManager.createQuery("SELECT ...") 또는 createNativeQuery("SELECT ...")
+        entity_manager_patterns = [
+            (r'createQuery\s*\(\s*["\']([^"\']+)["\']', "SELECT"),
+            (r'createNativeQuery\s*\(\s*["\']([^"\']+)["\']', "SELECT"),
+        ]
+        
+        method_pattern = r'(?:public|private|protected)?\s+\w+\s+(\w+)\s*\('
+        methods = re.finditer(method_pattern, source_code)
+        
+        for method_match in methods:
+            method_name = method_match.group(1)
+            method_start = method_match.start()
+            
+            next_method = re.search(r'(?:public|private|protected)?\s+\w+\s+\w+\s*\(', source_code[method_match.end():])
+            if next_method:
+                method_end = method_match.end() + next_method.start()
+            else:
+                method_end = len(source_code)
+            
+            method_body = source_code[method_start:method_end]
+            
+            for pattern, default_query_type in entity_manager_patterns:
+                matches = re.finditer(pattern, method_body, re.IGNORECASE | re.DOTALL)
+                for match in matches:
+                    sql = match.group(1)
+                    query_type = self._detect_query_type(sql)
+                    if not query_type:
+                        query_type = default_query_type
+                    
+                    sql_queries.append({
+                        "id": method_name,
+                        "query_type": query_type,
+                        "sql": sql.strip(),
+                        "strategy_specific": {
+                            "method_name": method_name,
+                            "file_path": str(file_path)
+                        }
+                    })
+        
+        return sql_queries
+    
+    def _detect_query_type(self, sql: str) -> Optional[str]:
+        """
+        SQL 쿼리 타입 자동 감지
+        
+        Args:
+            sql: SQL 쿼리 문자열
+            
+        Returns:
+            Optional[str]: 쿼리 타입 (SELECT, INSERT, UPDATE, DELETE) 또는 None
+        """
+        sql_upper = sql.strip().upper()
+        
+        if sql_upper.startswith("SELECT"):
+            return "SELECT"
+        elif sql_upper.startswith("INSERT"):
+            return "INSERT"
+        elif sql_upper.startswith("UPDATE"):
+            return "UPDATE"
+        elif sql_upper.startswith("DELETE"):
+            return "DELETE"
+        
+        return None
 

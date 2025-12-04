@@ -28,6 +28,8 @@ from src.parser.java_ast_parser import JavaASTParser
 from src.parser.xml_mapper_parser import XMLMapperParser
 from src.parser.call_graph_builder import CallGraphBuilder
 from src.analyzer.db_access_analyzer import DBAccessAnalyzer
+from src.analyzer.sql_extractor import SQLExtractor
+from src.analyzer.sql_parsing_strategy import create_strategy
 from src.persistence.data_persistence_manager import DataPersistenceManager, PersistenceError
 from src.persistence.cache_manager import CacheManager
 from src.models.source_file import SourceFile
@@ -331,30 +333,33 @@ class CLIController:
             print(f"  ✓ {len(endpoints)}개의 엔드포인트를 식별했습니다.")
             self.logger.info(f"Java AST 파싱 및 Call Graph 생성 완료: {len(java_parse_results)}개 파일, {len(endpoints)}개 엔드포인트")
             
-            # 3. XML Mapper 파싱
-            print("  [3/5] XML Mapper 파싱 중...")
-            self.logger.info("XML Mapper 파싱 시작")
+            # 3. SQL Parsing Strategy 초기 생성
+            print("  [3/5] SQL 추출 중...")
+            self.logger.info("SQL 추출 시작")
+            sql_wrapping_type = config_manager.sql_wrapping_type
+            sql_strategy = create_strategy(sql_wrapping_type)
+            
+            # SQL Extractor 초기화
             xml_parser = XMLMapperParser()
-            xml_files = [f for f in source_files if f.extension == ".xml"]
-            xml_parse_results = []
-            for xml_file in xml_files:
-                try:
-                    result = xml_parser.parse_mapper_file(xml_file.path)
-                    if not result.get("error"):
-                        xml_parse_results.append({
-                            "file": xml_file.to_dict(),
-                            "result": result
-                        })
-                except Exception as e:
-                    self.logger.warning(f"XML 파일 파싱 실패: {xml_file.path} - {e}")
-            print(f"  ✓ {len(xml_parse_results)}개의 XML 파일을 파싱했습니다.")
-            self.logger.info(f"XML Mapper 파싱 완료: {len(xml_parse_results)}개")
+            sql_extractor = SQLExtractor(
+                strategy=sql_strategy,
+                xml_parser=xml_parser,
+                java_parser=java_parser
+            )
+            
+            # SQL 추출 실행
+            sql_extraction_results = sql_extractor.extract_from_files(source_files)
+            print(f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다.")
+            
+            total_sql_queries = sum(len(r.get("sql_queries", [])) for r in sql_extraction_results)
+            print(f"  ✓ 총 {total_sql_queries}개의 SQL 쿼리를 추출했습니다.")
+            self.logger.info(f"SQL 추출 완료: {len(sql_extraction_results)}개 파일, {total_sql_queries}개 쿼리")
             
             # Java 파싱 결과 저장
             persistence_manager.save_to_file(java_parse_results, "java_parse_results.json")
             
-            # XML 파싱 결과 저장
-            persistence_manager.save_to_file(xml_parse_results, "xml_parse_results.json")
+            # SQL 추출 결과 저장 (xml_parse_results.json 대신)
+            persistence_manager.save_to_file(sql_extraction_results, "sql_extraction_results.json")
             
             # Call Graph 저장 (endpoint별 call tree 포함)
             call_graph_data = {
@@ -370,6 +375,7 @@ class CLIController:
             self.logger.info("DB 접근 정보 분석 시작")
             db_analyzer = DBAccessAnalyzer(
                 config_manager=config_manager,
+                sql_strategy=sql_strategy,
                 xml_parser=xml_parser,
                 java_parser=java_parser,
                 call_graph_builder=call_graph_builder
@@ -387,7 +393,7 @@ class CLIController:
             print("\n분석이 완료되었습니다.")
             print(f"  - 수집된 파일: {len(source_files)}개")
             print(f"  - Java 파일: {len(java_parse_results)}개")
-            print(f"  - XML 파일: {len(xml_parse_results)}개")
+            print(f"  - SQL 추출 파일: {len(sql_extraction_results)}개")
             print(f"  - 엔드포인트: {len(endpoints)}개")
             print(f"  - 테이블 접근 정보: {len(table_access_info_list)}개")
             self.logger.info("프로젝트 분석 완료")
