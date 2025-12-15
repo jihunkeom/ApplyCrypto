@@ -15,11 +15,9 @@ dependencies = [
 [project.scripts]
 applycrypto = "main:main"
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=4.1.0",
-]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

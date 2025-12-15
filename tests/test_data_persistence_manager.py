@@ -16,12 +16,12 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from src.persistence.data_persistence_manager import DataPersistenceManager, PersistenceError
-from src.models.source_file import SourceFile
-from src.models.method import Method, Parameter
-from src.models.call_relation import CallRelation
-from src.models.table_access_info import TableAccessInfo
-from src.models.modification_record import ModificationRecord
+from persistence.data_persistence_manager import DataPersistenceManager, PersistenceError
+from models.source_file import SourceFile
+from models.method import Method, Parameter
+from models.call_relation import CallRelation
+from models.table_access_info import TableAccessInfo
+from models.modification_record import ModificationRecord
 
 
 @pytest.fixture
@@ -283,7 +283,7 @@ def test_get_version_info(persistence_manager, sample_source_file):
 
 def test_validate_data_with_schema(persistence_manager, sample_source_file):
     """스키마 검증 확인"""
-    from src.persistence.schemas import SOURCE_FILE_SCHEMA
+    from persistence.schemas import SOURCE_FILE_SCHEMA
     
     data = sample_source_file.to_dict()
     result = persistence_manager.validate_data(data, SOURCE_FILE_SCHEMA)
@@ -293,7 +293,7 @@ def test_validate_data_with_schema(persistence_manager, sample_source_file):
 
 def test_validate_data_schema_violation(persistence_manager):
     """스키마 위반 검증 확인"""
-    from src.persistence.schemas import SOURCE_FILE_SCHEMA
+    from persistence.schemas import SOURCE_FILE_SCHEMA
     
     # 필수 필드 누락
     invalid_data = {"filename": "test.java"}

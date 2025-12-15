@@ -22,20 +22,20 @@ except ImportError:
     Node = None
     RenderTree = None
 
-from src.config.config_manager import ConfigurationManager, ConfigurationError
-from src.collector.source_file_collector import SourceFileCollector
-from src.parser.java_ast_parser import JavaASTParser
-from src.parser.xml_mapper_parser import XMLMapperParser
-from src.parser.call_graph_builder import CallGraphBuilder
-from src.analyzer.db_access_analyzer import DBAccessAnalyzer
-from src.analyzer.sql_extractor import SQLExtractor
-from src.analyzer.sql_parsing_strategy import create_strategy
-from src.persistence.data_persistence_manager import DataPersistenceManager, PersistenceError
-from src.persistence.cache_manager import CacheManager
-from src.models.source_file import SourceFile
-from src.models.table_access_info import TableAccessInfo
-from src.models.modification_record import ModificationRecord
-from src.modifier.code_modifier import CodeModifier
+from config.config_manager import ConfigurationManager, ConfigurationError
+from collector.source_file_collector import SourceFileCollector
+from parser.java_ast_parser import JavaASTParser
+from parser.xml_mapper_parser import XMLMapperParser
+from parser.call_graph_builder import CallGraphBuilder
+from analyzer.db_access_analyzer import DBAccessAnalyzer
+from analyzer.sql_extractor import SQLExtractor
+from analyzer.sql_parsing_strategy import create_strategy
+from persistence.data_persistence_manager import DataPersistenceManager, PersistenceError
+from persistence.cache_manager import CacheManager
+from models.source_file import SourceFile
+from models.table_access_info import TableAccessInfo
+from models.modification_record import ModificationRecord
+from modifier.code_modifier import CodeModifier
 
 
 class CLIController:
@@ -644,7 +644,7 @@ class CLIController:
                 return
             
             # Endpoint 객체로 변환
-            from src.parser.call_graph_builder import Endpoint
+            from parser.call_graph_builder import Endpoint
             endpoint_objects = []
             for ep in endpoints:
                 if isinstance(ep, dict):
@@ -701,7 +701,7 @@ class CLIController:
             
             # 엔드포인트 찾기
             endpoints = call_graph_data.get("endpoints", [])
-            from src.parser.call_graph_builder import Endpoint
+            from parser.call_graph_builder import Endpoint
             
             # Endpoint 객체로 변환
             endpoint_objects = []

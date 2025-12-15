@@ -9,14 +9,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from datetime import datetime
 
-from src.analyzer.db_access_analyzer import DBAccessAnalyzer
-from src.analyzer.sql_parsing_strategy import MyBatisStrategy, JPAStrategy, JDBCStrategy, create_strategy
-from src.config.config_manager import ConfigurationManager
-from src.models.source_file import SourceFile
-from src.parser.xml_mapper_parser import XMLMapperParser
-from src.parser.java_ast_parser import JavaASTParser
-from src.parser.call_graph_builder import CallGraphBuilder
-from src.persistence.cache_manager import CacheManager
+from analyzer.db_access_analyzer import DBAccessAnalyzer
+from analyzer.sql_parsing_strategy import MyBatisStrategy, JPAStrategy, JDBCStrategy, create_strategy
+from config.config_manager import ConfigurationManager
+from models.source_file import SourceFile
+from parser.xml_mapper_parser import XMLMapperParser
+from parser.java_ast_parser import JavaASTParser
+from parser.call_graph_builder import CallGraphBuilder
+from persistence.cache_manager import CacheManager
 
 
 @pytest.fixture

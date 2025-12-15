@@ -8,8 +8,8 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.parser.xml_mapper_parser import XMLMapperParser
-from src.models.table_access_info import TableAccessInfo
+from parser.xml_mapper_parser import XMLMapperParser
+from models.table_access_info import TableAccessInfo
 
 
 @pytest.fixture

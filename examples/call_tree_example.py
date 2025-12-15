@@ -4,17 +4,10 @@ Call Tree 출력 예제
 엔드포인트부터 시작하는 Call Tree를 터미널에 출력하는 예제입니다.
 """
 
-import sys
+from parser.call_graph_builder import CallGraphBuilder
+from parser.java_ast_parser import JavaASTParser
+from persistence.cache_manager import CacheManager
 from pathlib import Path
-from collections import defaultdict
-
-# 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.parser.call_graph_builder import CallGraphBuilder
-from src.parser.java_ast_parser import JavaASTParser
-from src.persistence.cache_manager import CacheManager
 
 # 캐시 매니저 생성
 cache_dir = Path(".cache")

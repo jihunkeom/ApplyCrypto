@@ -14,9 +14,9 @@ from dataclasses import dataclass, field
 from tree_sitter import Parser, Language, Node, Tree
 import tree_sitter_java as tsjava
 
-from ..models.method import Method, Parameter, LocalVariable
-from ..models.call_relation import CallRelation
-from ..persistence.cache_manager import CacheManager
+from models.method import Method, Parameter, LocalVariable
+from models.call_relation import CallRelation
+from persistence.cache_manager import CacheManager
 
 
 # Java 언어 설정

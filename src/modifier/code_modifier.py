@@ -8,8 +8,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from ..config.config_manager import ConfigurationManager
-from ..models.table_access_info import TableAccessInfo
+from config.config_manager import ConfigurationManager
+from models.table_access_info import TableAccessInfo
 from .llm.llm_factory import create_llm_provider
 from .llm.llm_provider import LLMProvider
 from .prompt_template_manager import PromptTemplateManager

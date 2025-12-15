@@ -9,9 +9,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import shutil
 
-from src.parser.java_ast_parser import JavaASTParser, ClassInfo
-from src.models.method import Method, Parameter
-from src.persistence.cache_manager import CacheManager
+from parser.java_ast_parser import JavaASTParser, ClassInfo
+from models.method import Method, Parameter
+from persistence.cache_manager import CacheManager
 
 
 @pytest.fixture

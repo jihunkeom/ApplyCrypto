@@ -14,7 +14,7 @@ import pytest
 import json
 import tempfile
 from pathlib import Path
-from src.config.config_manager import ConfigurationManager, ConfigurationError
+from config.config_manager import ConfigurationManager, ConfigurationError
 
 
 @pytest.fixture

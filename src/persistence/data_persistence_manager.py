@@ -11,15 +11,15 @@ from typing import Any, Dict, List, Optional, Type, TypeVar
 from datetime import datetime
 import logging
 
-from src.persistence.json_encoder import CustomJSONEncoder
-from src.persistence.json_decoder import CustomJSONDecoder
-from src.persistence.cache_manager import CacheManager
-from src.persistence.schemas import SCHEMA_MAP
-from src.models.source_file import SourceFile
-from src.models.method import Method
-from src.models.call_relation import CallRelation
-from src.models.table_access_info import TableAccessInfo
-from src.models.modification_record import ModificationRecord
+from persistence.json_encoder import CustomJSONEncoder
+from persistence.json_decoder import CustomJSONDecoder
+from persistence.cache_manager import CacheManager
+from persistence.schemas import SCHEMA_MAP
+from models.source_file import SourceFile
+from models.method import Method
+from models.call_relation import CallRelation
+from models.table_access_info import TableAccessInfo
+from models.modification_record import ModificationRecord
 
 
 T = TypeVar('T')

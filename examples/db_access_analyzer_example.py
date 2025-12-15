@@ -4,22 +4,17 @@ DB Access Analyzer 예제
 예제 코드를 실행하여 DB Access Analyzer의 기능을 확인합니다.
 """
 
-import sys
-import json
+
+from analyzer.db_access_analyzer import DBAccessAnalyzer
+from config.config_manager import ConfigurationManager
+from models.source_file import SourceFile
+from parser.xml_mapper_parser import XMLMapperParser
+from parser.java_ast_parser import JavaASTParser
+from parser.call_graph_builder import CallGraphBuilder
+from persistence.cache_manager import CacheManager
 from pathlib import Path
 from datetime import datetime
-
-# 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.analyzer.db_access_analyzer import DBAccessAnalyzer
-from src.config.config_manager import ConfigurationManager
-from src.models.source_file import SourceFile
-from src.parser.xml_mapper_parser import XMLMapperParser
-from src.parser.java_ast_parser import JavaASTParser
-from src.parser.call_graph_builder import CallGraphBuilder
-from src.persistence.cache_manager import CacheManager
+import json
 
 # 임시 디렉터리 생성
 temp_dir = Path("temp_db_analyzer")

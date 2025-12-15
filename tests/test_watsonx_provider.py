@@ -12,7 +12,7 @@ from pathlib import Path
 
 # 테스트 전에 모듈 import
 try:
-    from src.modifier.llm.watsonx_provider import WatsonXAIProvider, WATSONX_AVAILABLE
+    from modifier.llm.watsonx_provider import WatsonXAIProvider, WATSONX_AVAILABLE
 except ImportError:
     WatsonXAIProvider = None
     WATSONX_AVAILABLE = False

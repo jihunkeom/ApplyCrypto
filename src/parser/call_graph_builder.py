@@ -17,10 +17,10 @@ try:
 except ImportError:
     nx = None
 
-from ..models.call_relation import CallRelation
-from ..models.method import Method
+from models.call_relation import CallRelation
+from models.method import Method
 from .java_ast_parser import JavaASTParser, ClassInfo
-from ..persistence.cache_manager import CacheManager
+from persistence.cache_manager import CacheManager
 
 
 @dataclass

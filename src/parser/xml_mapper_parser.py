@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 
 from lxml import etree
 
-from ..models.table_access_info import TableAccessInfo
+from models.table_access_info import TableAccessInfo
 
 
 @dataclass

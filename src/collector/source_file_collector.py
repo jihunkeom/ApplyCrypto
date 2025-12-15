@@ -10,8 +10,8 @@ from datetime import datetime
 import os
 import fnmatch
 
-from src.config.config_manager import ConfigurationManager
-from src.models.source_file import SourceFile
+from config.config_manager import ConfigurationManager
+from models.source_file import SourceFile
 
 
 class SourceFileCollector:

@@ -167,14 +167,9 @@ venv\Scripts\activate  # Windows
 
 # 의존성 설치
 pip install -r requirements.txt
+pip install -e .
 ```
 
-## 개발 환경 설정
-
-```bash
-# 개발 의존성 포함 설치
-pip install -e ".[dev]"
-```
 
 ## 테스트 실행
 
@@ -333,9 +328,9 @@ python main.py modify --config config.json
 ### Python API 사용
 
 ```python
-from src.config.config_manager import ConfigurationManager
-from src.collector.source_file_collector import SourceFileCollector
-from src.analyzer.db_access_analyzer import DBAccessAnalyzer
+from config.config_manager import ConfigurationManager
+from collector.source_file_collector import SourceFileCollector
+from analyzer.db_access_analyzer import DBAccessAnalyzer
 
 # 설정 파일 로드
 config_manager = ConfigurationManager("config.json")

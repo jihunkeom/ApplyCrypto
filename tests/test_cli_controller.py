@@ -11,9 +11,9 @@ from tempfile import TemporaryDirectory
 from datetime import datetime
 
 from src.cli.cli_controller import CLIController
-from src.config.config_manager import ConfigurationManager
-from src.models.source_file import SourceFile
-from src.persistence.data_persistence_manager import DataPersistenceManager
+from config.config_manager import ConfigurationManager
+from models.source_file import SourceFile
+from persistence.data_persistence_manager import DataPersistenceManager
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_list_db_access(cli_controller, temp_dir):
     persistence_manager = DataPersistenceManager(temp_dir, output_dir=temp_dir / "results")
     
     # 샘플 테이블 접근 정보 생성
-    from src.models.table_access_info import TableAccessInfo
+    from models.table_access_info import TableAccessInfo
     table_access_info = [
         TableAccessInfo(
             table_name="USERS",

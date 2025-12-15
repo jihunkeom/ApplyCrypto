@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
-from ..models.source_file import SourceFile
-from ..parser.xml_mapper_parser import XMLMapperParser
-from ..parser.java_ast_parser import JavaASTParser
+from models.source_file import SourceFile
+from parser.xml_mapper_parser import XMLMapperParser
+from parser.java_ast_parser import JavaASTParser
 from .sql_parsing_strategy import SQLParsingStrategy
 
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from ..models.table_access_info import TableAccessInfo
+from models.table_access_info import TableAccessInfo
 
 
 logger = logging.getLogger(__name__)

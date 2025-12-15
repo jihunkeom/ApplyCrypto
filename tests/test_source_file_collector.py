@@ -16,9 +16,9 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from src.config.config_manager import ConfigurationManager
-from src.collector.source_file_collector import SourceFileCollector
-from src.models.source_file import SourceFile
+from config.config_manager import ConfigurationManager
+from collector.source_file_collector import SourceFileCollector
+from models.source_file import SourceFile
 
 
 @pytest.fixture

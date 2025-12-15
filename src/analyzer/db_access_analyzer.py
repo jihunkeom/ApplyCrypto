@@ -9,12 +9,12 @@ from pathlib import Path
 from typing import List, Dict, Set, Optional, Any
 from collections import defaultdict
 
-from ..models.table_access_info import TableAccessInfo
-from ..models.source_file import SourceFile
-from ..parser.xml_mapper_parser import XMLMapperParser
-from ..parser.java_ast_parser import JavaASTParser
-from ..parser.call_graph_builder import CallGraphBuilder
-from ..config.config_manager import ConfigurationManager
+from models.table_access_info import TableAccessInfo
+from models.source_file import SourceFile
+from parser.xml_mapper_parser import XMLMapperParser
+from parser.java_ast_parser import JavaASTParser
+from parser.call_graph_builder import CallGraphBuilder
+from config.config_manager import ConfigurationManager
 from .sql_parsing_strategy import SQLParsingStrategy
 
 

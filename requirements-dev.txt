@@ -1,0 +1,10 @@
+# 테스트 프레임워크
+pytest>=8.0.0
+pytest-cov>=4.1.0
+
+# 코드 포매터 및 린터
+ruff>=0.1.0
+isort>=5.0.0
+flake8>=6.0.0
+
+setuptools>=68.0

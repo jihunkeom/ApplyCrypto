@@ -8,9 +8,9 @@ import pytest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from src.parser.call_graph_builder import CallGraphBuilder, Endpoint, CallChain
-from src.parser.java_ast_parser import JavaASTParser
-from src.persistence.cache_manager import CacheManager
+from parser.call_graph_builder import CallGraphBuilder, Endpoint, CallChain
+from parser.java_ast_parser import JavaASTParser
+from persistence.cache_manager import CacheManager
 
 
 @pytest.fixture

@@ -4,14 +4,8 @@ XML Mapper Parser 예제
 예제 코드를 실행하여 XML Mapper 파서의 기능을 확인합니다.
 """
 
-import sys
+from parser.xml_mapper_parser import XMLMapperParser
 from pathlib import Path
-
-# 프로젝트 루트를 Python 경로에 추가
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
-
-from src.parser.xml_mapper_parser import XMLMapperParser
 
 # XML Mapper 파서 생성
 parser = XMLMapperParser()

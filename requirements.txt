@@ -1,7 +1,7 @@
 # ApplyCrypto 프로젝트 의존성 패키지
 
-# JSON 스키마 검증
 jsonschema>=4.20.0
+python-dotenv>=1.0.0  # 환경변수 로딩 (.env 파일)
 
 # Java AST 파싱
 tree-sitter>=0.20.0
@@ -27,8 +27,4 @@ ibm-watsonx-ai>=1.0.0  # WatsonX.AI 사용 시
 # openai>=1.0.0  # OpenAI 사용 시
 anthropic>=0.18.0  # Claude AI 사용 시
 
-# 테스트 프레임워크
-pytest>=8.0.0
-pytest-cov>=4.1.0
-python-dotenv>=1.0.0  # 환경변수 로딩 (.env 파일)
 
