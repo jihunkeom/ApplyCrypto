@@ -10,6 +10,7 @@ from typing import Optional
 
 from .claude_ai_provider import ClaudeAIProvider
 from .llm_provider import LLMProvider
+from .mock_llm_provider import MockLLMProvider
 from .openai_provider import OpenAIProvider
 from .watsonx_provider import WatsonXAIProvider
 
@@ -28,7 +29,7 @@ def create_llm_provider(provider_name: str) -> LLMProvider:
     필요한 credential 정보는 환경변수에서 가져옵니다.
 
     Args:
-        provider_name: 프로바이더 이름 ("watsonx_ai", "openai", "claude_ai")
+        provider_name: 프로바이더 이름 ("watsonx_ai", "openai", "claude_ai", "mock")
 
     Returns:
         LLMProvider: 생성된 LLM 프로바이더 인스턴스
@@ -78,8 +79,11 @@ def create_llm_provider(provider_name: str) -> LLMProvider:
 
         return ClaudeAIProvider(api_key=api_key, model_id=model_id)
 
+    elif provider_name_lower == "mock":
+        return MockLLMProvider()
+
     else:
         raise LLMProviderError(
             f"지원하지 않는 LLM 프로바이더: {provider_name}. "
-            f"지원하는 프로바이더: watsonx_ai, openai, claude_ai"
+            f"지원하는 프로바이더: watsonx_ai, openai, claude_ai, mock"
         )

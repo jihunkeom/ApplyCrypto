@@ -1,9 +1,9 @@
 {
-  "total_files": 5,
-  "successful_files": 2,
-  "failed_files": 3,
-  "total_tokens": 15654,
-  "processing_time": 170.639075,
-  "start_time": "2025-11-28T14:48:48.614375",
-  "end_time": "2025-11-28T14:51:39.253450"
+  "total_files": 4,
+  "successful_files": 0,
+  "failed_files": 4,
+  "total_tokens": 0,
+  "processing_time": 0.020422,
+  "start_time": "2025-12-16T10:00:25.845195",
+  "end_time": "2025-12-16T10:00:25.865617"
 }

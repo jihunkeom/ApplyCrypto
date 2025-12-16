@@ -83,7 +83,7 @@ class ConfigurationManager:
             },
             "llm_provider": {
                 "type": "string",
-                "enum": ["watsonx_ai", "claude_ai", "openai"],
+                "enum": ["watsonx_ai", "claude_ai", "openai", "mock"],
                 "description": "사용할 LLM 프로바이더 (기본값: watsonx_ai)",
             },
             "exclude_dirs": {
