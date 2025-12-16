@@ -5,7 +5,7 @@ Java 메서드 정보를 저장하는 데이터 모델입니다.
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 
 @dataclass

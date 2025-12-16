@@ -7,7 +7,6 @@ REST API 엔드포인트부터 DAO/Mapper까지 이어지는 호출 체인을 �
 
 import logging
 import re
-from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -241,9 +240,9 @@ class CallGraphBuilder:
         class_field_map: Dict[str, Dict[str, str]] = {}  # 클래스명 -> {필드명: 타입}
         for cls in all_classes:
             field_map = {}
-            for field in cls.fields:
-                field_name = field.get("name", "")
-                field_type = field.get("type", "")
+            for class_field_info in cls.fields:
+                field_name = class_field_info.get("name", "")
+                field_type = class_field_info.get("type", "")
                 if field_name and field_type:
                     # 제네릭 타입 처리 (예: List<User> -> List)
                     if "<" in field_type:
@@ -470,8 +469,8 @@ class CallGraphBuilder:
             return "Entity"
 
         # 필드 기반 추론 (JPA EntityManager, MyBatis SqlSession 등)
-        for field in cls.fields:
-            field_type = field.get("type", "").lower()
+        for class_field_info in cls.fields:
+            field_type = class_field_info.get("type", "").lower()
             if "entitymanager" in field_type or "entitymanagerfactory" in field_type:
                 return "Repository"  # JPA Repository로 추론
             elif "sqlsession" in field_type or "sqlsessiontemplate" in field_type:
@@ -770,8 +769,8 @@ class CallGraphBuilder:
                 # 순환 참조 확인
                 if node in current_path:
                     # 순환 참조 발견
-                    cycle_start = current_path.index(node)
-                    cycle = current_path[cycle_start:] + [node]
+                    # cycle_start = current_path.index(node)
+                    # cycle = current_path[cycle_start:] + [node]
                     chain = CallChain(
                         chain=current_path + [node],
                         layers=[self._get_layer(m) for m in current_path + [node]],

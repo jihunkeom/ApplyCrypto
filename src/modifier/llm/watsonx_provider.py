@@ -6,7 +6,7 @@ IBM WatsonX.AI LLM API를 호출하는 프로바이더입니다.
 
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 try:
     from ibm_watsonx_ai import Credentials

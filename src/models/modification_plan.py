@@ -4,7 +4,7 @@ ModificationPlan 데이터 모델
 코드 수정 계획을 저장하는 데이터 모델입니다.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

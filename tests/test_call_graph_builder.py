@@ -4,7 +4,7 @@ Call Graph Builder 테스트
 Call Graph Builder의 기능을 테스트합니다.
 """
 
-from parser.call_graph_builder import CallChain, CallGraphBuilder, Endpoint
+from parser.call_graph_builder import CallGraphBuilder
 from parser.java_ast_parser import JavaASTParser
 from pathlib import Path
 from tempfile import TemporaryDirectory

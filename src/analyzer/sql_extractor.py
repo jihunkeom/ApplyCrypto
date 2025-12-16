@@ -9,7 +9,6 @@ import logging
 from dataclasses import dataclass, field
 from parser.java_ast_parser import JavaASTParser
 from parser.xml_mapper_parser import XMLMapperParser
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from models.source_file import SourceFile

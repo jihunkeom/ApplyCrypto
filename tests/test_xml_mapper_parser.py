@@ -10,8 +10,6 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
-from models.table_access_info import TableAccessInfo
-
 
 @pytest.fixture
 def temp_dir():

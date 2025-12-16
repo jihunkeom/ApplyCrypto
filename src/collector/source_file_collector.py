@@ -5,10 +5,9 @@ Java Spring Boot 프로젝트의 모든 소스 파일을 재귀적으로 탐색�
 """
 
 import fnmatch
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Iterator, List, Optional, Set
+from typing import Iterator, List, Set
 
 from config.config_manager import ConfigurationManager
 from models.source_file import SourceFile
@@ -103,7 +102,7 @@ class SourceFileCollector:
             try:
                 source_file = self._extract_metadata(file_path)
                 yield source_file
-            except (OSError, PermissionError) as e:
+            except (OSError, PermissionError):
                 # 파일 접근 권한 문제 등은 로깅하고 건너뜀
                 continue
 

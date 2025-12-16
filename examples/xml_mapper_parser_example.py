@@ -118,7 +118,7 @@ try:
             print(f"  쿼리 타입: {', '.join(sorted(info['query_types']))}")
             if info["columns"]:
                 print(f"  칼럼: {', '.join(sorted(info['columns']))}")
-            print(f"  레이어: Mapper")
+            print("  레이어: Mapper")
 
         # 테이블 접근 정보 객체로 추출
         print("\n" + "=" * 60)

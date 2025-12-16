@@ -3,8 +3,8 @@
 PlantUML 다이어그램을 이미지로 렌더링하는 스크립트
 """
 
-import os
 from pathlib import Path
+
 from plantuml import PlantUML
 
 
@@ -39,14 +39,14 @@ def render_diagram(puml_file: Path, output_format: str = "png"):
 
         # HTML 오류 페이지인지 확인
         if diagram_data.startswith(b"<") or diagram_data.startswith(b"<!DOCTYPE"):
-            print(f"✗ 오류: PlantUML 서버가 HTML 오류 페이지를 반환했습니다.")
+            print("✗ 오류: PlantUML 서버가 HTML 오류 페이지를 반환했습니다.")
             error_text = diagram_data[:500].decode("utf-8", errors="ignore")
             print(f"   오류 내용: {error_text[:200]}...")
             return False
 
         # PNG 파일인지 확인 (PNG 시그니처: 89 50 4E 47)
         if not diagram_data.startswith(b"\x89PNG"):
-            print(f"✗ 오류: 생성된 데이터가 PNG 형식이 아닙니다.")
+            print("✗ 오류: 생성된 데이터가 PNG 형식이 아닙니다.")
             print(f"   헤더: {diagram_data[:10]}")
             return False
 

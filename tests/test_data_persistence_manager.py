@@ -154,7 +154,7 @@ def test_save_and_load_call_relations(persistence_manager):
         )
     ]
 
-    file_path = persistence_manager.save_to_file(call_relations, "call_relations.json")
+    persistence_manager.save_to_file(call_relations, "call_relations.json")
 
     loaded = persistence_manager.load_from_file("call_relations.json", CallRelation)
 
@@ -174,7 +174,7 @@ def test_save_and_load_table_access_info(persistence_manager):
         )
     ]
 
-    file_path = persistence_manager.save_to_file(table_access, "table_access.json")
+    persistence_manager.save_to_file(table_access, "table_access.json")
 
     loaded = persistence_manager.load_from_file("table_access.json", TableAccessInfo)
 
@@ -197,7 +197,7 @@ def test_save_and_load_modification_records(persistence_manager):
         )
     ]
 
-    file_path = persistence_manager.save_to_file(records, "modifications.json")
+    persistence_manager.save_to_file(records, "modifications.json")
 
     loaded = persistence_manager.load_from_file(
         "modifications.json", ModificationRecord

@@ -6,7 +6,6 @@ LLM Provider Factory
 
 import logging
 import os
-from typing import Optional
 
 from .claude_ai_provider import ClaudeAIProvider
 from .llm_provider import LLMProvider

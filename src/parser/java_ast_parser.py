@@ -6,7 +6,6 @@ tree-sitter를 사용하여 Java 소스 코드를 추상 구문 트리(AST)로 �
 """
 
 import re
-from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -875,7 +874,7 @@ class JavaASTParser:
 
                     # 메서드 내부 호출
                     if method.method_calls:
-                        print(f"    └─ Calls:")
+                        print("    └─ Calls:")
                         for call in method.method_calls:
                             if "." in call:
                                 print(f"       • {call}()")

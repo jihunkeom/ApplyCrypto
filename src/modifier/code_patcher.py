@@ -9,7 +9,6 @@ import json
 import logging
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -259,7 +258,7 @@ class CodePatcher:
                 if line.startswith("@@"):
                     match = re.search(r"@@ -(\d+),?\d* \+(\d+),?\d* @@", line)
                     if match:
-                        old_start = int(match.group(1)) - 1  # 0-based index
+                        # old_start = int(match.group(1)) - 1  # 0-based index (unused)
                         new_start = int(match.group(2)) - 1  # 0-based index
 
                         # 이전 청크까지의 원본 라인을 modified_lines에 추가

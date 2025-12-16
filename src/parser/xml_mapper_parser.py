@@ -111,7 +111,7 @@ class XMLMapperParser:
             error_msg = f"XML 구문 오류: {str(e)}"
             self.logger.error(error_msg)
             return None, error_msg
-        except FileNotFoundError as e:
+        except FileNotFoundError:
             error_msg = f"파일을 찾을 수 없습니다: {file_path}"
             self.logger.error(error_msg)
             return None, error_msg

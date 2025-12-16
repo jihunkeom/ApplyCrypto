@@ -9,7 +9,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional
 
 try:
     from tabulate import tabulate
@@ -36,8 +36,10 @@ from models.source_file import SourceFile
 from models.table_access_info import TableAccessInfo
 from modifier.code_modifier import CodeModifier
 from persistence.cache_manager import CacheManager
-from persistence.data_persistence_manager import (DataPersistenceManager,
-                                                  PersistenceError)
+from persistence.data_persistence_manager import (
+    DataPersistenceManager,
+    PersistenceError,
+)
 
 
 class CLIController:
@@ -628,7 +630,7 @@ class CLIController:
                     for col in info.columns
                 ]
                 print(f"  칼럼: {', '.join(column_names) if column_names else 'N/A'}")
-                print(f"  접근 파일:")
+                print("  접근 파일:")
                 if info.access_files:
                     for file_path in info.access_files:
                         print(f"    - {file_path}")
@@ -842,10 +844,9 @@ class CLIController:
             # Call Graph Builder를 다시 생성하여 호출 트리 출력
             # 설정 파일이 필요하므로 기본 경로 사용
             try:
-                config_manager = self.config_manager or ConfigurationManager(
-                    "config.json"
-                )
-            except:
+                if not self.config_manager:
+                    ConfigurationManager("config.json")
+            except Exception:
                 print(
                     "설정 파일을 로드할 수 없습니다. Call Graph를 재생성할 수 없습니다."
                 )
@@ -1059,7 +1060,7 @@ class CLIController:
             )
 
             # 통계 출력
-            print(f"\n모든 작업이 완료되었습니다.")
+            print("\n모든 작업이 완료되었습니다.")
             print(f"  - 성공: {total_success}개")
             print(f"  - 실패: {total_failed}개")
             print(f"  - 건너뜀: {total_skipped}개")

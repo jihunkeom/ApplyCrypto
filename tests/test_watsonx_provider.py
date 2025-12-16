@@ -7,7 +7,7 @@ IBM WatsonX.AI Provider의 실제 API 호출을 테스트합니다.
 
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 import pytest
 
@@ -152,7 +152,7 @@ class TestWatsonXAIProvider:
             "model_id", "ibm/granite-13b-chat-v2"
         )
 
-        print(f"\n✓ API 호출 성공:")
+        print("\n✓ API 호출 성공:")
         print(f"  - 응답 길이: {len(result['content'])} 문자")
         print(f"  - 토큰 사용량: {result['tokens_used']}")
         print(f"  - 모델: {result['model']}")
@@ -184,7 +184,7 @@ class TestWatsonXAIProvider:
         assert "content" in result
         assert len(result["content"]) > 0
 
-        print(f"\n✓ 파라미터 포함 API 호출 성공:")
+        print("\n✓ 파라미터 포함 API 호출 성공:")
         print(f"  - 응답: {result['content']}")
 
     @pytest.mark.skipif(
@@ -299,7 +299,7 @@ class TestWatsonXAIProvider:
         assert "content" in result
         assert len(result["content"]) > 0
 
-        print(f"\n✓ 긴 프롬프트 API 호출 성공:")
+        print("\n✓ 긴 프롬프트 API 호출 성공:")
         print(f"  - 프롬프트 길이: {len(long_prompt)} 문자")
         print(f"  - 응답 길이: {len(result['content'])} 문자")
 

@@ -6,10 +6,8 @@ SourceFileCollector 사용 예제
 
 from pathlib import Path
 
-
 from collector.source_file_collector import SourceFileCollector
 from config.config_manager import ConfigurationManager
-
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 

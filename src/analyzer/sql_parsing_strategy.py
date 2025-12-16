@@ -6,7 +6,7 @@ Strategy Pattern을 사용하여 sql_wrapping_type별 SQL 쿼리 분석 전략�
 
 import re
 from abc import ABC, abstractmethod
-from typing import Dict, List, Set
+from typing import Set
 
 
 class SQLParsingStrategy(ABC):

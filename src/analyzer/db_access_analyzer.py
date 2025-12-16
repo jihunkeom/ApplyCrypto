@@ -9,7 +9,6 @@ from collections import defaultdict
 from parser.call_graph_builder import CallGraphBuilder
 from parser.java_ast_parser import JavaASTParser
 from parser.xml_mapper_parser import XMLMapperParser
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from config.config_manager import ConfigurationManager
@@ -369,7 +368,8 @@ class DBAccessAnalyzer:
         main_layer = self._determine_main_layer(layer_files)
 
         # 칼럼 목록 추출 (SQL 쿼리에서 사용된 칼럼)
-        used_columns = self._extract_used_columns(sql_queries, table_name, columns)
+        # 칼럼 목록 추출 (SQL 쿼리에서 사용된 칼럼) - 현재는 사용되지 않음 (디버깅용)
+        # self._extract_used_columns(sql_queries, table_name, columns)
 
         # 칼럼 정보 생성 (config.json에 설정된 모든 칼럼 포함)
         # SQL 쿼리에서 사용된 칼럼은 실제로 사용된 것으로 표시

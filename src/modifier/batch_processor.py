@@ -6,8 +6,7 @@ Batch Processor 모듈
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List
 
 try:
     from tqdm import tqdm
@@ -210,7 +209,7 @@ class BatchProcessor:
                 executor.submit(
                     self.process_batch, batch, template_type, variables, llm_call_func
                 ): i
-                for i, batch in enumerate(batches)
+                for i, batch in enumerate(batch_iterator)
             }
 
             for future in as_completed(futures):

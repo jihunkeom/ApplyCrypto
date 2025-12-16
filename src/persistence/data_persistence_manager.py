@@ -8,19 +8,13 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type, TypeVar
+from typing import Any, Dict, Optional, Type, TypeVar
 
 import jsonschema
 
-from models.call_relation import CallRelation
-from models.method import Method
-from models.modification_record import ModificationRecord
-from models.source_file import SourceFile
-from models.table_access_info import TableAccessInfo
 from persistence.cache_manager import CacheManager
 from persistence.json_decoder import CustomJSONDecoder
 from persistence.json_encoder import CustomJSONEncoder
-from persistence.schemas import SCHEMA_MAP
 
 T = TypeVar("T")
 
