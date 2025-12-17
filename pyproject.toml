@@ -1,6 +1,6 @@
-[build-system]
-requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.build_meta"
+# [build-system]
+# requires = ["setuptools>=68.0", "wheel"]
+# build-backend = "setuptools.build_meta"
 
 [project]
 name = "applycrypto"
@@ -8,9 +8,6 @@ version = "0.1.0"
 description = "Java Spring Boot 프로젝트 암호화 자동 적용 도구"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = [
-    "jsonschema>=4.20.0",
-]
 
 [project.scripts]
 applycrypto = "cli.run:main"

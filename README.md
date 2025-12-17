@@ -156,24 +156,19 @@ ApplyCrypto는 계층형 아키텍처로 설계되어 있으며, 각 레이어�
 
 ## 설치
 
-```bash
-# 가상환경 생성
-python -m venv venv
-
-# 가상환경 활성화
-source venv/bin/activate  # Linux/macOS
-# 또는
-venv\Scripts\activate  # Windows
-
-# 의존성 설치
-pip install -r requirements.txt
-pip install -e .
+```powershell
+./scripts/setup.ps1
 ```
 
+## 프로그램 실행
+```powershell
+.\venv\Scripts\activate # 가상환경 실행
+applycrypto --help
+```
 
 ## 테스트 실행
 
-```bash
+```powershell
 # 모든 테스트 실행
 pytest
 
@@ -351,5 +346,21 @@ table_access_info = analyzer.analyze(source_files)
 - **그래프 분석**: NetworkX (Call Graph 구성)
 - **AI 모델**: WatsonX.AI, OpenAI, Claude AI
 - **데이터 직렬화**: JSON with custom encoder/decoder
+
+
+## 개발 가이드
+
+### Linting
+커밋하기 전에 `scripts/lint.ps1` 실행하여 린팅
+
+```powershell
+./scripts/lint.ps1
+```
+
+### wheels dir 만들기
+
+```powershell
+./scripts/download_wheels.ps1
+```
 
 
