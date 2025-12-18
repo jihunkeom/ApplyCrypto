@@ -4,6 +4,8 @@ Code Modifier 메인 모듈
 LLM을 활용하여 소스 코드에 암호화/복호화 코드를 자동으로 적용하는 메인 클래스입니다.
 """
 
+import importlib
+import inspect
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -102,16 +104,31 @@ class CodeModifier:
         # 설정에서 diff_type 가져오기 (기본값: mybatis_service)
         diff_type = self.config_manager.get("diff_type", "mybatis_service")
 
-        if diff_type == "mybatis_service":
-            from .diff_generator.mybatis_service.mybatis_service_diff_generator import (
-                MyBatisServiceDiffGenerator,
-            )
+        try:
+            # 동적 임포트 경로 생성
+            # 예: .diff_generator.mybatis_service.mybatis_service_diff_generator
+            module_path = f".diff_generator.{diff_type}.{diff_type}_diff_generator"
 
-            return MyBatisServiceDiffGenerator(
-                llm_provider=self.llm_provider,
-            )
-        else:
-            raise ValueError(f"Invalid diff_type: {diff_type}")
+            # 현재 패키지를 기준으로 모듈 임포트
+            module = importlib.import_module(module_path, package=__package__)
+
+            # 모듈 내에서 BaseDiffGenerator를 상속받는 클래스 탐색
+            for name, obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    issubclass(obj, BaseDiffGenerator)
+                    and obj is not BaseDiffGenerator
+                    and obj.__module__ == module.__name__
+                ):
+                    return obj(llm_provider=self.llm_provider)
+
+            raise ValueError(f"No suitable DiffGenerator class found in {module_path}")
+
+        except ImportError as e:
+            logger.error(f"Failed to import generator module for {diff_type}: {e}")
+            raise ValueError(f"Invalid diff_type or module not found: {diff_type}")
+        except Exception as e:
+            logger.error(f"Error loading generator for {diff_type}: {e}")
+            raise
 
     def modify_sources(
         self, table_access_info: TableAccessInfo, dry_run: bool = False
