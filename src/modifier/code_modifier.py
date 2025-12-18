@@ -47,7 +47,7 @@ class CodeModifier:
         """
         self.config_manager = config_manager
         self.project_root = (
-            Path(project_root) if project_root else Path(config_manager.project_path)
+            Path(project_root) if project_root else Path(config_manager.get("target_project"))
         )
 
         # LLM 프로바이더 초기화

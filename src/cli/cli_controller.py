@@ -283,7 +283,7 @@ class CLIController:
         try:
             # 설정 파일 로드
             config_manager = self.load_config(args.config)
-            target_project = config_manager.target_project
+            target_project = Path(config_manager.get("target_project"))
 
             self.logger.info("프로젝트 분석 시작...")
             print("프로젝트 분석을 시작합니다...")
@@ -344,7 +344,7 @@ class CLIController:
             # 3. SQL Parsing Strategy 초기 생성
             print("  [3/5] SQL 추출 중...")
             self.logger.info("SQL 추출 시작")
-            sql_wrapping_type = config_manager.sql_wrapping_type
+            sql_wrapping_type = config_manager.get("sql_wrapping_type")
             sql_strategy = create_strategy(sql_wrapping_type)
 
             # SQL Extractor 초기화
@@ -465,7 +465,7 @@ class CLIController:
                 config_path = "config.json"
                 if Path(config_path).exists():
                     config_manager = ConfigurationManager(config_path)
-                    target_project = config_manager.target_project
+                    target_project = Path(config_manager.get("target_project"))
             except Exception:
                 # 설정 파일이 없거나 로드 실패 시 현재 디렉터리 사용
                 pass
@@ -923,12 +923,12 @@ class CLIController:
             config_manager = self.load_config(args.config)
 
             # Type Handler 모드 분기
-            if config_manager.use_type_handler:
+            if config_manager.get("type_handler", False):
                 self.logger.info("Type Handler 모드로 수정을 진행합니다.")
                 return self._handle_modify_with_type_handler(args, config_manager)
 
             # 기존 로직 (직접 코드 수정 방식)
-            target_project = config_manager.target_project
+            target_project = Path(config_manager.get("target_project"))
 
             mode = "미리보기" if args.dry_run else "실제 수정"
             self.logger.info(f"파일 수정 시작 (모드: {mode})...")

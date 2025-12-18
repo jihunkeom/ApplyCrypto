@@ -1,6 +1,6 @@
 # ApplyCrypto 프로젝트 의존성 패키지
 
-jsonschema>=4.20.0
+pydantic>=2.0.0
 python-dotenv>=1.0.0  # 환경변수 로딩 (.env 파일)
 
 # Java AST 파싱

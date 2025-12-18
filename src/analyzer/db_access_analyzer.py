@@ -51,9 +51,8 @@ class DBAccessAnalyzer:
         self.logger = logging.getLogger(__name__)
 
         # 설정에서 테이블 정보 가져오기
+        # 설정에서 테이블 정보 가져오기
         self.access_tables = config_manager.get("access_tables", [])
-        if not self.access_tables:
-            self.access_tables = config_manager.access_tables
 
         # 테이블별 칼럼 매핑 생성 (대소문자 무시)
         # 칼럼 정보: {column_name: {"new_column": bool}}
@@ -63,23 +62,23 @@ class DBAccessAnalyzer:
         ] = {}  # table_name -> {column_name: {"new_column": bool}}
 
         for table_info in self.access_tables:
-            table_name = table_info.get("table_name", "").lower()
+            table_name = table_info.table_name.lower()
             columns_set = set()
             column_info_dict = {}
 
-            for col in table_info.get("columns", []):
+            for col in table_info.columns:
                 if isinstance(col, str):
                     # 문자열 형식: "column_name"
                     col_name = col.lower()
                     columns_set.add(col_name)
                     column_info_dict[col_name] = {"new_column": False}
-                elif isinstance(col, dict):
-                    # 객체 형식: {"name": "column_name", "new_column": true}
-                    col_name = col.get("name", "").lower()
+                else:
+                    # 객체 형식: ColumnDetail(name="column_name", new_column=True, ...)
+                    col_name = col.name.lower()
                     if col_name:
                         columns_set.add(col_name)
                         column_info_dict[col_name] = {
-                            "new_column": col.get("new_column", False)
+                            "new_column": col.new_column
                         }
 
             self.table_column_map[table_name] = columns_set
@@ -97,8 +96,9 @@ class DBAccessAnalyzer:
         """
         # sql_extraction_results.json에서 SQL 쿼리 정보 로드 (한 번만)
         from persistence.data_persistence_manager import DataPersistenceManager
+        from pathlib import Path
 
-        persistence_manager = DataPersistenceManager(self.config_manager.target_project)
+        persistence_manager = DataPersistenceManager(Path(self.config_manager.get("target_project")))
         sql_extraction_results = persistence_manager.load_from_file(
             "sql_extraction_results.json"
         )
@@ -116,18 +116,18 @@ class DBAccessAnalyzer:
         table_access_info_list = []
 
         for table_config in self.access_tables:
-            table_name = table_config.get("table_name", "").lower()
+            table_name = table_config.table_name.lower()
 
             if not table_name:
                 continue
 
             # 칼럼 목록 추출 (문자열 또는 객체 형식 모두 지원)
             columns = set()
-            for col in table_config.get("columns", []):
+            for col in table_config.columns:
                 if isinstance(col, str):
                     columns.add(col.lower())
-                elif isinstance(col, dict):
-                    col_name = col.get("name", "")
+                else:
+                    col_name = col.name
                     if col_name:
                         columns.add(col_name.lower())
 

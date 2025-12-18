@@ -53,18 +53,18 @@ class SourceFileCollector:
             config_manager: ConfigurationManager 인스턴스
         """
         self._config_manager = config_manager
-        self._project_path = config_manager.project_path
-        self._source_file_types = config_manager.source_file_types
+        self._project_path = Path(config_manager.get("target_project"))
+        self._source_file_types = config_manager.get("source_file_types")
         self._seen_files: Set[Path] = set[Path]()  # 중복 제거를 위한 Set
 
         # 제외할 디렉터리: 기본값과 config에서 가져온 값 병합
         self._excluded_dirs = self.EXCLUDED_DIRS.copy()
-        config_exclude_dirs = config_manager.exclude_dirs
+        config_exclude_dirs = config_manager.get("exclude_dirs")
         if config_exclude_dirs:
             self._excluded_dirs.update(config_exclude_dirs)
 
         # 제외할 파일 패턴: config에서 가져온 값
-        self._exclude_file_patterns = config_manager.exclude_files
+        self._exclude_file_patterns = config_manager.get("exclude_files")
 
     def collect(self) -> Iterator[SourceFile]:
         """

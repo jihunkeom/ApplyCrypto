@@ -164,7 +164,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
             llm_provider: LLM 프로바이더 (선택적)
         """
         self.config_manager = config_manager
-        self.project_root = Path(config_manager.target_project)
+        self.project_root = Path(config_manager.get("target_project"))
 
         # LLM 프로바이더 초기화
         if llm_provider:
@@ -446,14 +446,15 @@ If no modifications are needed, return the original XML as-is with a comment at 
         """config_manager에서 column_type 정보를 가져와 TableAccessInfo에 병합"""
         # config에서 해당 테이블의 컬럼 정보 가져오기
         config_columns = {}
-        for table in self.config_manager.access_tables:
-            if table["table_name"].lower() == table_info.table_name.lower():
-                for col in table.get("columns", []):
-                    if isinstance(col, dict):
-                        col_name = col.get("name", "").lower()
-                        column_type = col.get("column_type", "").lower()
+        for table in self.config_manager.get("access_tables"):
+            if table.table_name.lower() == table_info.table_name.lower():
+                for col in table.columns:
+                    if not isinstance(col, str):
+                        # ColumnDetail object
+                        col_name = col.name.lower()
+                        column_type = col.column_type if col.column_type else ""
                         if col_name:
-                            config_columns[col_name] = column_type
+                            config_columns[col_name] = column_type.lower()
                 break
 
         # table_info의 columns에 column_type 추가

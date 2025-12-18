@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, TypeVar
 
-import jsonschema
+
 
 from persistence.cache_manager import CacheManager
 from persistence.json_decoder import CustomJSONDecoder
@@ -295,29 +295,6 @@ class DataPersistenceManager:
         if file_path.exists():
             return file_path.stat().st_size
         return 0
-
-    def validate_data(self, data: Any, schema: Dict[str, Any]) -> bool:
-        """
-        데이터가 JSON 스키마를 준수하는지 검증
-
-        Args:
-            data: 검증할 데이터
-            schema: JSON 스키마
-
-        Returns:
-            bool: 검증 성공 여부
-
-        Raises:
-            PersistenceError: 스키마 검증 실패 시
-        """
-        try:
-            jsonschema.validate(instance=data, schema=schema)
-            return True
-        except jsonschema.ValidationError as e:
-            error_path = ".".join(str(p) for p in e.path)
-            raise PersistenceError(f"스키마 검증 실패: {error_path} - {e.message}")
-        except jsonschema.SchemaError as e:
-            raise PersistenceError(f"스키마 오류: {e.message}")
 
     def handle_corrupted_file(self, file_path: Path) -> bool:
         """

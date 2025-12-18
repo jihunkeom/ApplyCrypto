@@ -260,25 +260,6 @@ def test_get_version_info(persistence_manager, sample_source_file):
     assert version_info["file_size"] > 0
 
 
-def test_validate_data_with_schema(persistence_manager, sample_source_file):
-    """스키마 검증 확인"""
-    from persistence.schemas import SOURCE_FILE_SCHEMA
-
-    data = sample_source_file.to_dict()
-    result = persistence_manager.validate_data(data, SOURCE_FILE_SCHEMA)
-
-    assert result is True
-
-
-def test_validate_data_schema_violation(persistence_manager):
-    """스키마 위반 검증 확인"""
-    from persistence.schemas import SOURCE_FILE_SCHEMA
-
-    # 필수 필드 누락
-    invalid_data = {"filename": "test.java"}
-
-    with pytest.raises(PersistenceError, match="스키마 검증 실패"):
-        persistence_manager.validate_data(invalid_data, SOURCE_FILE_SCHEMA)
 
 
 def test_subdirectory_save_and_load(persistence_manager, sample_source_file):
