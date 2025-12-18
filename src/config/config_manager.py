@@ -82,7 +82,11 @@ class ConfigurationManager:
                                         "properties": {
                                             "name": {"type": "string"},
                                             "new_column": {"type": "boolean"},
-                                            "crypto_code": {"type": "string"},
+                                            "column_type": {
+                                                "type": "string",
+                                                "enum": ["dob", "ssn", "name", "sex"],
+                                                "description": "컬럼 타입 (dob: 생년월일, ssn: 주민번호, name: 이름, sex: 성별)",
+                                            },
                                         },
                                         "required": ["name"],
                                     },

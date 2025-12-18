@@ -29,51 +29,106 @@ class TypeHandlerGenerator:
     MyBatis Type Handler를 자동 생성하여 암복호화를 적용합니다.
 
     주요 기능:
-    1. LLM을 활용한 Type Handler Java 클래스 생성
-    2. XML 매퍼 파일에 typeHandler 속성 추가
+    1. 템플릿 기반 Type Handler Java 클래스 생성
+    2. LLM을 활용한 XML 매퍼 파일 typeHandler 속성 추가
     3. 생성 결과 추적 및 저장
     """
 
-    # Type Handler 생성을 위한 프롬프트 템플릿
-    TYPE_HANDLER_PROMPT_TEMPLATE = """
-## Task
-You are a Java developer. Generate a MyBatis TypeHandler class for encrypting/decrypting sensitive data.
+    # column_type별 설정 (crypto_code, 클래스명, 설명)
+    COLUMN_TYPE_CONFIG = {
+        "dob": {"crypto_code": "T01", "class_name": "DobTypeHandler", "description": "생년월일"},
+        "ssn": {"crypto_code": "T02", "class_name": "SsnTypeHandler", "description": "주민번호"},
+        "name": {"crypto_code": "T03", "class_name": "NameTypeHandler", "description": "이름"},
+        "sex": {"crypto_code": "T04", "class_name": "SexTypeHandler", "description": "성별"},
+    }
 
-## Requirements
-1. Create a TypeHandler that extends BaseTypeHandler<String>
-2. Use the CryptoService class for encryption/decryption
-3. Package name should be: {package_name}
-4. Class name should be: {class_name}
-5. The TypeHandler should handle the following columns from table '{table_name}':
-{columns_info}
+    # column_type별 crypto_code 매핑 (하위 호환성)
+    COLUMN_TYPE_CRYPTO_CODE = {
+        "dob": "T01",
+        "ssn": "T02",
+        "name": "T03",
+        "sex": "T04",
+    }
 
-## CryptoService Usage
-- Encryption: CryptoService.encrypt(String plainText, String cryptoCode)
-- Decryption: CryptoService.decrypt(String encryptedText, String cryptoCode)
-- Import: import com.ksign.crypto.CryptoService;
-- Each column has its own crypto_code that must be used for encryption/decryption.
-- Create separate methods or logic to handle each column with its specific crypto_code.
+    # 단순한 column_type별 TypeHandler 템플릿
+    TYPE_HANDLER_JAVA_TEMPLATE = '''package {package_name};
 
-## Output Format
-Return ONLY the complete Java source code without any explanation.
-Start with package declaration and end with closing brace.
+import java.sql.CallableStatement;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
-```java
-package {package_name};
+import org.apache.ibatis.type.BaseTypeHandler;
+import org.apache.ibatis.type.JdbcType;
+import org.apache.ibatis.type.MappedTypes;
 
-// Your implementation here
-```
-"""
+import com.ksign.crypto.CryptoService;
+
+/**
+ * {description} 암복호화 TypeHandler
+ * 
+ * column_type: {column_type}
+ * crypto_code: {crypto_code}
+ */
+@MappedTypes(String.class)
+public class {class_name} extends BaseTypeHandler<String> {{
+
+    private static final String CRYPTO_CODE = "{crypto_code}";
+
+    @Override
+    public void setNonNullParameter(PreparedStatement ps, int i, String parameter, JdbcType jdbcType) throws SQLException {{
+        ps.setString(i, CryptoService.encrypt(parameter, CRYPTO_CODE));
+    }}
+
+    @Override
+    public String getNullableResult(ResultSet rs, String columnName) throws SQLException {{
+        String encryptedValue = rs.getString(columnName);
+        if (encryptedValue == null) {{
+            return null;
+        }}
+        return CryptoService.decrypt(encryptedValue, CRYPTO_CODE);
+    }}
+
+    @Override
+    public String getNullableResult(ResultSet rs, int columnIndex) throws SQLException {{
+        String encryptedValue = rs.getString(columnIndex);
+        if (encryptedValue == null) {{
+            return null;
+        }}
+        return CryptoService.decrypt(encryptedValue, CRYPTO_CODE);
+    }}
+
+    @Override
+    public String getNullableResult(CallableStatement cs, int columnIndex) throws SQLException {{
+        String encryptedValue = cs.getString(columnIndex);
+        if (encryptedValue == null) {{
+            return null;
+        }}
+        return CryptoService.decrypt(encryptedValue, CRYPTO_CODE);
+    }}
+
+    /**
+     * 암호화 유틸리티 메서드
+     */
+    public static String encrypt(String plainText) {{
+        return CryptoService.encrypt(plainText, CRYPTO_CODE);
+    }}
+
+    /**
+     * 복호화 유틸리티 메서드
+     */
+    public static String decrypt(String encryptedText) {{
+        return CryptoService.decrypt(encryptedText, CRYPTO_CODE);
+    }}
+}}
+'''
 
     XML_MODIFICATION_PROMPT_TEMPLATE = """
 ## Task
 You are a MyBatis expert. Modify the following XML mapper file to use TypeHandler for encryption/decryption.
 
-## Target Columns (from table '{table_name}'):
+## Target Columns and their TypeHandlers (from table '{table_name}'):
 {columns_info}
-
-## TypeHandler Class
-Full class name: {type_handler_class}
 
 ## Original XML Content
 ```xml
@@ -81,11 +136,11 @@ Full class name: {type_handler_class}
 ```
 
 ## Requirements
-1. Add typeHandler attribute to <result> tags that map to target columns
-2. Add typeHandler attribute to parameter mappings (#{{columnName}}) for INSERT/UPDATE statements
+1. Add typeHandler attribute to <result> tags that map to target columns, using the specific TypeHandler class for each column
+2. Add typeHandler attribute to parameter mappings (#{{columnName}}) for INSERT/UPDATE statements, using the specific TypeHandler class for each column
 3. Do NOT modify any other parts of the XML
 4. Preserve all formatting and comments
-5. Note: Each column has its own crypto_code which is handled internally by the TypeHandler
+5. Each column has its own specific TypeHandler class - use the correct one for each column
 
 ## Output Format
 Return the complete modified XML content.
@@ -170,44 +225,56 @@ If no modifications are needed, return the original XML as-is with a comment at 
             if sql_results:
                 print(f"  ✓ {len(sql_results)}개의 XML 매퍼 파일 정보를 로드했습니다.")
 
+            # 2. 필요한 column_type 수집
+            print("\n  [2/4] 필요한 TypeHandler 분석 중...")
+            required_column_types = self._collect_required_column_types(
+                table_access_info_list
+            )
+            print(f"  ✓ 필요한 TypeHandler: {', '.join(required_column_types)}")
+
             # 통계
             total_handlers_created = 0
             total_xml_modified = 0
             total_skipped = 0
             total_failed = 0
 
-            # 2. 각 테이블별로 처리
-            for table_info in table_access_info_list:
-                print(f"\n  [2/4] 테이블 '{table_info.table_name}' 처리 중...")
+            # 3. column_type별 TypeHandler 클래스 생성
+            print("\n  [3/4] TypeHandler 클래스 생성 중...")
+            generated_handlers = {}  # column_type -> full_class_name 매핑
 
-                # 2.1 Type Handler 클래스 생성
-                print("    - Type Handler 클래스 생성 중...")
-                handler_result = self._generate_type_handler_class(
-                    table_info, dry_run, apply_all
+            for column_type in required_column_types:
+                handler_result = self._generate_type_handler_for_column_type(
+                    column_type, dry_run, apply_all
                 )
 
                 if handler_result["status"] == "success":
                     total_handlers_created += 1
-                    print(
-                        f"    ✓ Type Handler 생성 완료: {handler_result['class_name']}"
-                    )
+                    generated_handlers[column_type] = handler_result["full_class_name"]
+                    print(f"    ✓ {handler_result['class_name']} 생성 완료")
                 elif handler_result["status"] == "skipped":
                     total_skipped += 1
+                    # 이미 존재하는 경우에도 매핑 정보 저장
+                    if "full_class_name" in handler_result:
+                        generated_handlers[column_type] = handler_result[
+                            "full_class_name"
+                        ]
                     print(
-                        f"    - Type Handler 생성 건너뜀: {handler_result.get('reason', '')}"
+                        f"    - {handler_result.get('class_name', column_type)} 건너뜀: {handler_result.get('reason', '')}"
                     )
                 else:
                     total_failed += 1
                     print(
-                        f"    ✗ Type Handler 생성 실패: {handler_result.get('error', '')}"
+                        f"    ✗ {column_type} TypeHandler 생성 실패: {handler_result.get('error', '')}"
                     )
-                    continue
 
-                # 2.2 관련 XML 매퍼 파일 찾기 및 수정
-                print("    - XML 매퍼 파일 수정 중...")
+            # 4. 테이블별 XML 매퍼 수정
+            print("\n  [4/4] XML 매퍼 파일 수정 중...")
+            for table_info in table_access_info_list:
+                print(f"    - 테이블 '{table_info.table_name}' XML 수정 중...")
+
                 xml_results = self._modify_xml_mappers(
                     table_info,
-                    handler_result.get("full_class_name", ""),
+                    generated_handlers,  # column_type -> TypeHandler 매핑 전달
                     dry_run,
                     apply_all,
                 )
@@ -215,19 +282,18 @@ If no modifications are needed, return the original XML as-is with a comment at 
                 for result in xml_results:
                     if result["status"] == "success":
                         total_xml_modified += 1
-                        print(f"    ✓ XML 수정 완료: {Path(result['file_path']).name}")
+                        print(f"      ✓ XML 수정 완료: {Path(result['file_path']).name}")
                     elif result["status"] == "skipped":
                         print(
-                            f"    - XML 수정 건너뜀: {Path(result['file_path']).name}"
+                            f"      - XML 수정 건너뜀: {Path(result['file_path']).name}"
                         )
                     else:
-                        print(f"    ✗ XML 수정 실패: {result.get('error', '')}")
+                        print(f"      ✗ XML 수정 실패: {result.get('error', '')}")
 
-            # 3. 결과 저장
-            print("\n  [4/4] 결과 저장 중...")
+            # 5. 결과 저장
             self.result_tracker.save_statistics()
 
-            # 4. 최종 통계 출력
+            # 6. 최종 통계 출력
             print("\n" + "=" * 60)
             print("Type Handler 생성 완료!")
             print("=" * 60)
@@ -246,8 +312,110 @@ If no modifications are needed, return the original XML as-is with a comment at 
             print(f"오류: {e}")
             return 1
 
+    def _collect_required_column_types(
+        self, table_access_info_list: List[TableAccessInfo]
+    ) -> List[str]:
+        """테이블 접근 정보에서 필요한 column_type 목록 수집"""
+        column_types = set()
+        for table_info in table_access_info_list:
+            for col in table_info.columns:
+                print(col)
+                print("="*30)
+                if isinstance(col, dict):
+                    column_type = col.get("column_type", "")
+                    if column_type and column_type in self.COLUMN_TYPE_CONFIG:
+                        column_types.add(column_type)
+        return sorted(list(column_types))
+
+    def _generate_type_handler_for_column_type(
+        self, column_type: str, dry_run: bool, apply_all: bool
+    ) -> Dict[str, Any]:
+        """
+        특정 column_type에 대한 TypeHandler 클래스 생성
+
+        Args:
+            column_type: 컬럼 타입 (dob, ssn, name, sex)
+            dry_run: 미리보기 모드
+            apply_all: 자동 적용 모드
+
+        Returns:
+            Dict[str, Any]: 생성 결과
+        """
+        if column_type not in self.COLUMN_TYPE_CONFIG:
+            return {
+                "status": "failed",
+                "error": f"지원하지 않는 column_type: {column_type}",
+            }
+
+        config = self.COLUMN_TYPE_CONFIG[column_type]
+        class_name = config["class_name"]
+        crypto_code = config["crypto_code"]
+        description = config["description"]
+        full_class_name = f"{self.type_handler_package}.{class_name}"
+
+        # 파일 저장 경로 결정
+        output_path = self._get_type_handler_output_path(class_name)
+
+        # 이미 존재하는지 확인
+        if output_path.exists() and not dry_run:
+            return {
+                "status": "skipped",
+                "reason": "이미 존재함",
+                "class_name": class_name,
+                "full_class_name": full_class_name,
+            }
+
+        try:
+            # 템플릿으로 Java 코드 생성
+            java_code = self.TYPE_HANDLER_JAVA_TEMPLATE.format(
+                package_name=self.type_handler_package,
+                class_name=class_name,
+                column_type=column_type,
+                crypto_code=crypto_code,
+                description=description,
+            )
+
+            # 미리보기 출력
+            if not apply_all and not dry_run:
+                print(f"\n--- TypeHandler 클래스 미리보기: {class_name} ---")
+                print(f"\033[92m{java_code}\033[0m")  # Green
+                print(f"--- 저장 경로: {output_path} ---\n")
+
+                choice = self._get_user_confirmation()
+                if choice == "n":
+                    return {
+                        "status": "skipped",
+                        "reason": "사용자가 건너뛰기를 선택함",
+                        "class_name": class_name,
+                        "full_class_name": full_class_name,
+                    }
+                elif choice == "q":
+                    raise KeyboardInterrupt("사용자가 중단을 선택함")
+
+            # 파일 저장
+            if not dry_run:
+                self._save_type_handler_file(java_code, output_path)
+
+            return {
+                "status": "success",
+                "class_name": class_name,
+                "full_class_name": full_class_name,
+                "output_path": str(output_path),
+                "java_code": java_code,
+            }
+
+        except KeyboardInterrupt:
+            raise
+        except Exception as e:
+            logger.error(f"TypeHandler 생성 실패 ({column_type}): {e}")
+            return {
+                "status": "failed",
+                "error": str(e),
+                "class_name": class_name,
+            }
+
     def _load_table_access_info(self) -> List[TableAccessInfo]:
-        """분석 결과에서 테이블 접근 정보 로드 (config의 crypto_code 병합)"""
+        """분석 결과에서 테이블 접근 정보 로드 (config의 column_type 병합)"""
         try:
             data = self.persistence_manager.load_from_file(
                 "table_access_info.json", TableAccessInfo
@@ -264,8 +432,8 @@ If no modifications are needed, return the original XML as-is with a comment at 
                 else:
                     continue
 
-                # config_manager에서 crypto_code 정보 병합
-                table_info = self._merge_crypto_codes(table_info)
+                # config_manager에서 column_type 정보 병합
+                table_info = self._merge_column_types(table_info)
                 result.append(table_info)
 
             return result
@@ -274,28 +442,28 @@ If no modifications are needed, return the original XML as-is with a comment at 
             logger.error(f"테이블 접근 정보 로드 실패: {e}")
             return []
 
-    def _merge_crypto_codes(self, table_info: TableAccessInfo) -> TableAccessInfo:
-        """config_manager에서 crypto_code 정보를 가져와 TableAccessInfo에 병합"""
+    def _merge_column_types(self, table_info: TableAccessInfo) -> TableAccessInfo:
+        """config_manager에서 column_type 정보를 가져와 TableAccessInfo에 병합"""
         # config에서 해당 테이블의 컬럼 정보 가져오기
         config_columns = {}
         for table in self.config_manager.access_tables:
-            if table["table_name"] == table_info.table_name:
+            if table["table_name"].lower() == table_info.table_name.lower():
                 for col in table.get("columns", []):
                     if isinstance(col, dict):
-                        col_name = col.get("name", "")
-                        crypto_code = col.get("crypto_code", "")
+                        col_name = col.get("name", "").lower()
+                        column_type = col.get("column_type", "").lower()
                         if col_name:
-                            config_columns[col_name] = crypto_code
+                            config_columns[col_name] = column_type
                 break
 
-        # table_info의 columns에 crypto_code 추가
+        # table_info의 columns에 column_type 추가
         updated_columns = []
         for col in table_info.columns:
             if isinstance(col, dict):
                 col_name = col.get("name", "")
-                # config에서 crypto_code 가져오기
+                # config에서 column_type 가져오기
                 if col_name in config_columns:
-                    col["crypto_code"] = config_columns[col_name]
+                    col["column_type"] = config_columns[col_name]
                 updated_columns.append(col)
             elif isinstance(col, str):
                 # 문자열인 경우 dict로 변환
@@ -303,7 +471,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
                     {
                         "name": col,
                         "new_column": False,
-                        "crypto_code": config_columns.get(col, ""),
+                        "column_type": config_columns.get(col, ""),
                     }
                 )
             else:
@@ -385,105 +553,10 @@ If no modifications are needed, return the original XML as-is with a comment at 
 
         return xml_files
 
-    def _generate_type_handler_class(
-        self,
-        table_info: TableAccessInfo,
-        dry_run: bool,
-        apply_all: bool,
-    ) -> Dict[str, Any]:
-        """
-        Type Handler Java 클래스 생성
-
-        Args:
-            table_info: 테이블 접근 정보
-            dry_run: 미리보기 모드
-            apply_all: 자동 적용 모드
-
-        Returns:
-            Dict[str, Any]: 생성 결과
-        """
-        # 클래스 이름 생성 (테이블명 기반)
-        class_name = self._generate_class_name(table_info.table_name)
-        full_class_name = f"{self.type_handler_package}.{class_name}"
-
-        # 컬럼 정보 포맷팅
-        columns_info = self._format_columns_info(table_info.columns)
-
-        # 프롬프트 생성
-        prompt = self.TYPE_HANDLER_PROMPT_TEMPLATE.format(
-            package_name=self.type_handler_package,
-            class_name=class_name,
-            table_name=table_info.table_name,
-            columns_info=columns_info,
-        )
-
-        try:
-            # LLM 호출
-            response, error = self.error_handler.retry_with_backoff(
-                self.llm_provider.call, prompt
-            )
-
-            if error:
-                return {
-                    "status": "failed",
-                    "error": str(error),
-                    "class_name": class_name,
-                }
-
-            # 응답에서 Java 코드 추출
-            java_code = self._extract_java_code(response)
-            if not java_code:
-                return {
-                    "status": "failed",
-                    "error": "LLM 응답에서 Java 코드를 추출할 수 없습니다.",
-                    "class_name": class_name,
-                }
-
-            # 파일 저장 경로 결정
-            output_path = self._get_type_handler_output_path(class_name)
-
-            # 미리보기 출력
-            if not apply_all and not dry_run:
-                print(f"\n--- Type Handler 클래스 미리보기: {class_name} ---")
-                print(f"\033[92m{java_code}\033[0m")  # Green
-                print(f"--- 저장 경로: {output_path} ---\n")
-
-                choice = self._get_user_confirmation()
-                if choice == "n":
-                    return {
-                        "status": "skipped",
-                        "reason": "사용자가 건너뛰기를 선택함",
-                        "class_name": class_name,
-                    }
-                elif choice == "q":
-                    raise KeyboardInterrupt("사용자가 중단을 선택함")
-
-            # 파일 저장
-            if not dry_run:
-                self._save_type_handler_file(java_code, output_path)
-
-            return {
-                "status": "success",
-                "class_name": class_name,
-                "full_class_name": full_class_name,
-                "output_path": str(output_path),
-                "java_code": java_code,
-            }
-
-        except KeyboardInterrupt:
-            raise
-        except Exception as e:
-            logger.error(f"Type Handler 생성 실패: {e}")
-            return {
-                "status": "failed",
-                "error": str(e),
-                "class_name": class_name,
-            }
-
     def _modify_xml_mappers(
         self,
         table_info: TableAccessInfo,
-        type_handler_class: str,
+        type_handler_mapping: Dict[str, str],
         dry_run: bool,
         apply_all: bool,
     ) -> List[Dict[str, Any]]:
@@ -492,7 +565,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
 
         Args:
             table_info: 테이블 접근 정보
-            type_handler_class: Type Handler 전체 클래스명
+            type_handler_mapping: column_type -> TypeHandler 전체 클래스명 매핑
             dry_run: 미리보기 모드
             apply_all: 자동 적용 모드
 
@@ -514,7 +587,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
             result = self._modify_single_xml_mapper(
                 xml_file,
                 table_info,
-                type_handler_class,
+                type_handler_mapping,
                 dry_run,
                 apply_all,
             )
@@ -526,7 +599,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
         self,
         xml_file: Path,
         table_info: TableAccessInfo,
-        type_handler_class: str,
+        type_handler_mapping: Dict[str, str],
         dry_run: bool,
         apply_all: bool,
     ) -> Dict[str, Any]:
@@ -536,7 +609,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
         Args:
             xml_file: XML 파일 경로
             table_info: 테이블 접근 정보
-            type_handler_class: Type Handler 클래스명
+            type_handler_mapping: column_type -> TypeHandler 전체 클래스명 매핑
             dry_run: 미리보기 모드
             apply_all: 자동 적용 모드
 
@@ -548,8 +621,10 @@ If no modifications are needed, return the original XML as-is with a comment at 
             with open(xml_file, "r", encoding="utf-8") as f:
                 original_content = f.read()
 
-            # 컬럼 정보 포맷팅
-            columns_info = self._format_columns_info(table_info.columns)
+            # 컬럼 정보 포맷팅 (TypeHandler 매핑 포함)
+            columns_info = self._format_columns_info_with_handler(
+                table_info.columns, type_handler_mapping
+            )
 
             # XML 내용의 중괄호를 이스케이프 (MyBatis #{param} 문법 때문에 필요)
             escaped_xml_content = original_content.replace("{", "{{").replace("}", "}}")
@@ -558,9 +633,10 @@ If no modifications are needed, return the original XML as-is with a comment at 
             prompt = self.XML_MODIFICATION_PROMPT_TEMPLATE.format(
                 table_name=table_info.table_name,
                 columns_info=columns_info,
-                type_handler_class=type_handler_class,
                 xml_content=escaped_xml_content,
             )
+
+            # print(prompt)
 
             # LLM 호출
             response, error = self.error_handler.retry_with_backoff(
@@ -643,31 +719,22 @@ If no modifications are needed, return the original XML as-is with a comment at 
                 "error": str(e),
             }
 
-    def _generate_class_name(self, table_name: str) -> str:
-        """테이블명으로부터 클래스명 생성"""
-        # snake_case -> PascalCase
-        parts = table_name.lower().split("_")
-        # 'tb_' 접두사 제거
-        if parts[0] == "tb":
-            parts = parts[1:]
-        pascal_name = "".join(part.capitalize() for part in parts)
-        return f"{pascal_name}EncryptTypeHandler"
 
-    def _format_columns_info(self, columns: List[Any]) -> str:
-        """컬럼 정보를 문자열로 포맷팅 (crypto_code 포함)"""
+    def _format_columns_info_with_handler(
+        self, columns: List[Any], type_handler_mapping: Dict[str, str]
+    ) -> str:
+        """컬럼 정보를 TypeHandler 매핑과 함께 포맷팅 (XML 수정용)"""
         lines = []
         for col in columns:
             if isinstance(col, dict):
                 col_name = col.get("name", str(col))
-                is_new = col.get("new_column", False)
-                crypto_code = col.get("crypto_code", "")
+                column_type = col.get("column_type", "")
 
-                col_info = f"  - {col_name}"
-                if crypto_code:
-                    col_info += f' (crypto_code: "{crypto_code}")'
-                if is_new:
-                    col_info += " (new column)"
-                lines.append(col_info)
+                if column_type and column_type in type_handler_mapping:
+                    handler_class = type_handler_mapping[column_type]
+                    lines.append(f"  - {col_name} -> typeHandler=\"{handler_class}\"")
+                else:
+                    lines.append(f"  - {col_name} (no TypeHandler)")
             else:
                 lines.append(f"  - {col}")
         return "\n".join(lines)
@@ -686,24 +753,6 @@ If no modifications are needed, return the original XML as-is with a comment at 
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(java_code)
         logger.info(f"Type Handler 파일 저장: {output_path}")
-
-    def _extract_java_code(self, response: Dict[str, Any]) -> Optional[str]:
-        """LLM 응답에서 Java 코드 추출"""
-        content = response.get("content", "")
-        if not content:
-            return None
-
-        # ```java ... ``` 블록 추출
-        pattern = r"```java\s*(.*?)\s*```"
-        match = re.search(pattern, content, re.DOTALL)
-        if match:
-            return match.group(1).strip()
-
-        # 코드 블록 없이 직접 반환된 경우
-        if content.strip().startswith("package"):
-            return content.strip()
-
-        return None
 
     def _extract_xml_code(self, response: Dict[str, Any]) -> Optional[str]:
         """LLM 응답에서 XML 코드 추출"""

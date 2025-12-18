@@ -77,6 +77,7 @@ class WatsonXAIOnPremiseProvider(LLMProvider):
                 f"{self.api_url}/icp4d-api/v1/authorize",
                 headers=headers,
                 data=json.dumps(data),
+                verify=False
             )
             response.raise_for_status()
             return response.json().get("token")
@@ -105,9 +106,6 @@ class WatsonXAIOnPremiseProvider(LLMProvider):
                 - model: 사용된 모델명
         """
         try:
-            # 메시지 형식으로 변환
-            messages = [{"role": "user", "content": prompt}]
-
             iam_token = self._get_credentials()
             url = f"{self.api_url}/m1/v1/text/chat?version=2023-05-29"
             headers = {
@@ -116,7 +114,7 @@ class WatsonXAIOnPremiseProvider(LLMProvider):
                 "Authorization": f"Bearer {iam_token}",
             }
             body = {
-                "messages": messages,
+                "messages": [{"role":"user","text":prompt}],
                 "project_id": self.project_id,
                 "model_id": self.model_id,
                 "frequency_penalty": 0,
