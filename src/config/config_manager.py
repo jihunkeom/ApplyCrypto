@@ -62,6 +62,7 @@ class Configuration(BaseModel):
     exclude_files: List[str] = Field(
         default_factory=list, description="제외할 파일 패턴 목록"
     )
+    use_call_chain_mode: bool = Field(False, description="Call Chain 모드 사용 여부")
     max_tokens_per_batch: int = Field(2000, description="한번에 처리할 최대 토큰 수")
     max_workers: int = Field(4, description="병렬 처리 워커 수")
     max_retries: int = Field(3, description="최대 재시도 횟수")

@@ -36,7 +36,6 @@
     }
   ],
   "llm_provider": "watsonx_ai",
-  "type_handler": false,
   "use_call_chain_mode": false,
   "exclude_dirs": ["test", "generated"],
   "exclude_files": ["*Test.java", "*_test.java"]
