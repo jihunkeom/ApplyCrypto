@@ -176,6 +176,6 @@ class WatsonXAIOnPremiseProvider(LLMProvider):
         프로바이더 이름을 반환합니다.
 
         Returns:
-            str: "watsonx_ai"
+            str: "watsonx_ai_on_prem"
         """
         return "watsonx_ai_on_prem"

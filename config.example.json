@@ -1,37 +1,42 @@
 {
-  "target_project": "/absolute/path/to/your/target/project",
-  "source_file_types": [
-    ".java",
-    ".xml"
-  ],
+  "target_project": "/path/to/project",
+  "source_file_types": [".java", ".xml"],
   "sql_wrapping_type": "mybatis",
   "access_tables": [
     {
-      "table_name": "EXAMPLE_TABLE",
+      "table_name": "EMPLOYEE",
       "columns": [
-        "column1",
-        "column2",
         {
-          "name": "encrypted_column_name",
-          "new_column": true,
-          "column_type": "ssn"
+          "name": "NAME",
+          "new_column": false,
+          "encryption_code": "K_SIGN_NAME"
+        },
+        {
+          "name": "JUMIN_NUMBER",
+          "new_column": false,
+          "encryption_code": "K_SIGN_JUMIN"
+        }
+      ]
+    },
+    {
+      "table_name": "CUSTOMER",
+      "columns": [
+        {
+          "name": "PHONE",
+          "new_column": false,
+          "encryption_code": "K_SIGN_PHONE"
+        },
+        {
+          "name": "EMAIL",
+          "new_column": false,
+          "encryption_code": "K_SIGN_EMAIL"
         }
       ]
     }
   ],
-  "diff_gen_type": "mybatis_service",
   "llm_provider": "watsonx_ai",
-  "exclude_dirs": [
-    "target",
-    "build",
-    ".git",
-    "__pycache__"
-  ],
-  "exclude_files": [
-    "*.test.java",
-    "*Test.java"
-  ],
-  "max_tokens_per_batch": 2000,
-  "max_workers": 4,
-  "max_retries": 3
+  "type_handler": false,
+  "use_call_chain_mode": false,
+  "exclude_dirs": ["test", "generated"],
+  "exclude_files": ["*Test.java", "*_test.java"]
 }

@@ -914,6 +914,11 @@ class CLIController:
                 self.logger.info("Type Handler 모드로 수정을 진행합니다.")
                 return self._handle_modify_with_type_handler(args, config)
 
+            # Call Chain 모드 분기
+            if config_manager.get("use_call_chain_mode", False):
+                self.logger.info("Call Chain 모드로 수정을 진행합니다.")
+                return self._handle_modify_with_call_chain(args, config_manager)
+
             # 기존 로직 (직접 코드 수정 방식)
             target_project = Path(config.target_project)
 
@@ -1105,5 +1110,123 @@ class CLIController:
             return 1
         except Exception as e:
             self.logger.exception(f"Type Handler 수정 중 오류: {e}")
+            print(f"오류: {e}", file=sys.stderr)
+            return 1
+
+    def _handle_modify_with_call_chain(
+        self, args: argparse.Namespace, config_manager: ConfigurationManager
+    ) -> int:
+        """
+        Call Chain 방식으로 암복호화를 적용하는 핸들러
+
+        Call Chain 모드를 사용하면 레이어별 배치 처리 대신
+        호출 체인(Controller → Service → Repository) 단위로 LLM을 호출하여
+        가장 적절한 레이어에 암복호화 코드를 삽입합니다.
+
+        Args:
+            args: 파싱된 인자
+            config_manager: 설정 관리자
+
+        Returns:
+            int: 종료 코드
+        """
+        try:
+            from modifier.call_chain_processor import CallChainProcessor
+
+            target_project = config_manager.get("target_project")
+
+            mode = "미리보기" if args.dry_run else "실제 수정"
+            self.logger.info(f"Call Chain 모드로 파일 수정 시작 (모드: {mode})...")
+            print(f"Call Chain 모드로 파일 수정을 시작합니다 (모드: {mode})...")
+
+            # Data Persistence Manager 초기화
+            persistence_manager = DataPersistenceManager(target_project)
+
+            # 분석 결과 확인 및 로드
+            print("  [1/3] 분석 결과 확인 중...")
+            try:
+                # table_access_info 로드
+                table_access_info_data = persistence_manager.load_from_file(
+                    "table_access_info.json", TableAccessInfo
+                )
+                if not table_access_info_data:
+                    print(
+                        "  오류: 테이블 접근 정보를 찾을 수 없습니다. 먼저 'analyze' 명령어를 실행하세요."
+                    )
+                    return 1
+
+                table_access_info_list = []
+                for info in table_access_info_data:
+                    if isinstance(info, dict):
+                        table_access_info_list.append(TableAccessInfo.from_dict(info))
+                    elif isinstance(info, TableAccessInfo):
+                        table_access_info_list.append(info)
+
+                if not table_access_info_list:
+                    print("  수정할 테이블 접근 정보가 없습니다.")
+                    return 0
+
+                print(
+                    f"  ✓ {len(table_access_info_list)}개의 테이블 접근 정보를 로드했습니다."
+                )
+
+                # call_graph 로드
+                call_graph_data = persistence_manager.load_from_file("call_graph.json")
+                if not call_graph_data:
+                    print(
+                        "  오류: Call Graph 정보를 찾을 수 없습니다. 먼저 'analyze' 명령어를 실행하세요."
+                    )
+                    return 1
+
+                print(
+                    f"  ✓ Call Graph 로드 완료 (엔드포인트: {len(call_graph_data.get('endpoints', []))}개)"
+                )
+
+            except PersistenceError as e:
+                print(f"  오류: 분석 결과를 로드할 수 없습니다: {e}")
+                return 1
+
+            # CallChainProcessor 초기화
+            print("  [2/3] Call Chain Processor 초기화 중...")
+            processor = CallChainProcessor(
+                config_manager=config_manager, project_root=Path(target_project)
+            )
+
+            # 처리 실행
+            print("  [3/3] Call Chain 처리 중...")
+            result = processor.process_all(
+                table_access_info_list=table_access_info_list,
+                call_graph_data=call_graph_data,
+                dry_run=args.dry_run,
+                apply_all=args.all,
+            )
+
+            # 결과 출력
+            if result.get("success"):
+                stats = result.get("statistics", {})
+                print("\n모든 작업이 완료되었습니다.")
+                print(f"  - 총 체인 수: {stats.get('total_chains', 0)}개")
+                print(f"  - 처리된 체인: {stats.get('processed_chains', 0)}개")
+                print(f"  - 성공: {stats.get('success', 0)}개")
+                print(f"  - 실패: {stats.get('failed', 0)}개")
+                print(f"  - 스킵: {stats.get('skipped', 0)}개")
+
+                if args.dry_run:
+                    print("\n[미리보기 모드] 실제 파일은 수정되지 않았습니다.")
+
+                return 0
+            else:
+                print(f"\n오류: {result.get('error', '알 수 없는 오류')}")
+                return 1
+
+        except ImportError as e:
+            self.logger.error(f"Call Chain Processor 모듈을 로드할 수 없습니다: {e}")
+            print(
+                f"오류: Call Chain Processor 모듈을 로드할 수 없습니다: {e}",
+                file=sys.stderr,
+            )
+            return 1
+        except Exception as e:
+            self.logger.exception(f"Call Chain 수정 중 오류: {e}")
             print(f"오류: {e}", file=sys.stderr)
             return 1
