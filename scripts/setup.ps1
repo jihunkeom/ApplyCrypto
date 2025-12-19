@@ -60,9 +60,12 @@ $possibleVenvDirs = @(".venv", "venv")
 
 foreach ($dir in $possibleVenvDirs) {
     if (Test-Path -Path ".\$dir" -PathType Container) {
-        $venvPath = ".\$dir"
-        Write-Host "$venvPath 에서 가상 환경 발견됨."
-        break
+        $checkPath = Join-Path ".\$dir" "Scripts\Activate.ps1"
+        if (Test-Path -Path $checkPath) {
+            $venvPath = ".\$dir"
+            Write-Host "$venvPath 에서 유효한 가상 환경 발견됨."
+            break
+        }
     }
 }
 

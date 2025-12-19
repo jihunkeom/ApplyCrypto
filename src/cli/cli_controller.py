@@ -915,11 +915,7 @@ class CLIController:
                 return self._handle_modify_with_type_handler(args, config)
 
             # Call Chain 모드 분기
-            # Call Chain 모드 분기
-            if (
-                getattr(config, "use_call_chain_mode", False)
-                or getattr(config, "diff_gen_type", "") == "call_chain"
-            ):
+            if config.use_call_chain_mode or config.diff_gen_type == "call_chain":
                 self.logger.info("Call Chain 모드로 수정을 진행합니다.")
                 return self._handle_modify_with_call_chain(args, config)
 
