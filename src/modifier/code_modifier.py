@@ -4,20 +4,23 @@ Code Modifier 메인 모듈
 LLM을 활용하여 소스 코드에 암호화/복호화 코드를 자동으로 적용하는 메인 클래스입니다.
 """
 
+import importlib
+import inspect
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.config_manager import ConfigurationManager
+from models.modification_context import CodeSnippet, ModificationContext
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
 
 from .batch_processor import BatchProcessor
 from .code_patcher import CodePatcher
+from .diff_generator import BaseDiffGenerator, DiffGeneratorInput
 from .error_handler import ErrorHandler
 from .llm.llm_factory import create_llm_provider
 from .llm.llm_provider import LLMProvider
-from .prompt_template_manager import PromptTemplateManager
 from .result_tracker import ResultTracker
 
 logger = logging.getLogger("applycrypto.code_patcher")
@@ -57,11 +60,10 @@ class CodeModifier:
             llm_provider_name = config_manager.get("llm_provider", "watsonx_ai")
             self.llm_provider = create_llm_provider(provider_name=llm_provider_name)
 
-        # 컴포넌트 초기화
-        self.template_manager = PromptTemplateManager()
+        self.diff_generator = self._get_diff_generator()
+
         self.batch_processor = BatchProcessor(
-            template_manager=self.template_manager,
-            max_tokens_per_batch=config_manager.get("max_tokens_per_batch", 3000),
+            max_workers=config_manager.get("max_workers", 4),
         )
         self.code_patcher = CodePatcher(project_root=self.project_root)
         self.error_handler = ErrorHandler(
@@ -91,6 +93,42 @@ class CodeModifier:
             return os.getenv("OPENAI_API_KEY")
 
         return None
+
+    def _get_diff_generator(self) -> BaseDiffGenerator:
+        """
+        DiffGenerator 인스턴스를 가져옵니다.
+
+        Returns:
+            BaseDiffGenerator: DiffGenerator 인스턴스
+        """
+        # 설정에서 diff_type 가져오기 (기본값: mybatis_service)
+        diff_type = self.config_manager.get("diff_type", "mybatis_service")
+
+        try:
+            # 동적 임포트 경로 생성
+            # 예: .diff_generator.mybatis_service.mybatis_service_diff_generator
+            module_path = f".diff_generator.{diff_type}.{diff_type}_diff_generator"
+
+            # 현재 패키지를 기준으로 모듈 임포트
+            module = importlib.import_module(module_path, package=__package__)
+
+            # 모듈 내에서 BaseDiffGenerator를 상속받는 클래스 탐색
+            for name, obj in inspect.getmembers(module, inspect.isclass):
+                if (
+                    issubclass(obj, BaseDiffGenerator)
+                    and obj is not BaseDiffGenerator
+                    and obj.__module__ == module.__name__
+                ):
+                    return obj(llm_provider=self.llm_provider)
+
+            raise ValueError(f"No suitable DiffGenerator class found in {module_path}")
+
+        except ImportError as e:
+            logger.error(f"Failed to import generator module for {diff_type}: {e}")
+            raise ValueError(f"Invalid diff_type or module not found: {diff_type}")
+        except Exception as e:
+            logger.error(f"Error loading generator for {diff_type}: {e}")
+            raise
 
     def modify_sources(
         self, table_access_info: TableAccessInfo, dry_run: bool = False
@@ -173,17 +211,20 @@ class CodeModifier:
             # 레이어별로 파일 그룹화
             layer_files = table_access_info.layer_files
 
+            # 모든 레이어의 배치를 수집
+            all_batches: List[ModificationContext] = []
+
             # 각 레이어별로 처리
             for layer_name, file_paths in layer_files.items():
                 if not file_paths:
                     continue
 
                 logger.info(
-                    f"레이어 '{layer_name}' 계획 생성 시작: {len(file_paths)}개 파일"
+                    f"레이어 '{layer_name}' 계획 생성 준비: {len(file_paths)}개 파일"
                 )
 
                 # 파일 내용 읽기 (항상 절대 경로 사용)
-                files_with_content = []
+                code_snippets: List[CodeSnippet] = []
                 for file_path in file_paths:
                     try:
                         # 파일 경로를 절대 경로로 변환
@@ -201,11 +242,11 @@ class CodeModifier:
                         if full_path.exists():
                             with open(full_path, "r", encoding="utf-8") as f:
                                 content = f.read()
-                            files_with_content.append(
-                                {
-                                    "path": str(full_path),  # 절대 경로 저장
-                                    "content": content,
-                                }
+                            code_snippets.append(
+                                CodeSnippet(
+                                    path=str(full_path),  # 절대 경로 저장
+                                    content=content,
+                                )
                             )
                         else:
                             logger.warning(
@@ -234,33 +275,40 @@ class CodeModifier:
                             )
                         )
 
-                if not files_with_content:
-                    continue
-
-                # 통합 템플릿 사용
-                template_type = "default"
-
-                # 배치 생성
-                batches = self.batch_processor.create_batches(
-                    files=files_with_content,
-                    template_type=template_type,
-                    variables={
-                        "table_info": self._format_table_info(table_access_info),
-                        "layer_name": layer_name,
-                        "file_count": len(files_with_content),
-                    },
+                # 배치를 생성하여 토큰 제한 고려
+                modification_context_batches: List[ModificationContext] = (
+                    self.create_batches(
+                        code_snippets=code_snippets,
+                        table_access_info=table_access_info,
+                        layer=layer_name,
+                    )
                 )
 
-                # 배치 처리
-                for batch in batches:
-                    batch_plans = self._generate_batch_plans(
-                        batch=batch,
-                        template_type=template_type,
-                        layer_name=layer_name,
-                        modification_type="encryption",
-                        table_access_info=table_access_info,
-                    )
-                    plans.extend(batch_plans)
+                all_batches.extend(modification_context_batches)
+
+            # 병렬 배치 처리 함수 정의
+            def process_context_wrapper(
+                context: ModificationContext,
+            ) -> List[ModificationPlan]:
+                if not context.code_snippets:
+                    return []
+                return self._generate_batch_plans(
+                    modification_context=context,
+                    template_type="default",
+                    modification_type="encryption",
+                )
+
+            # 병렬 처리 실행
+            plan_batches = self.batch_processor.process_items_parallel(
+                items=all_batches,
+                process_func=process_context_wrapper,
+                desc="파일 수정 계획 생성 중",
+            )
+
+            # 결과 통합
+            for plan_batch in plan_batches:
+                if plan_batch:
+                    plans.extend(plan_batch)
 
             return plans
 
@@ -360,53 +408,43 @@ class CodeModifier:
 
     def _generate_batch_plans(
         self,
-        batch: List[Dict[str, Any]],
+        modification_context: ModificationContext,
         template_type: str,
-        layer_name: str,
         modification_type: str,
-        table_access_info: TableAccessInfo,
     ) -> List[ModificationPlan]:
         """
         배치 처리를 통해 수정 계획을 생성합니다.
 
         Args:
-            batch: 배치 파일 리스트
+            modification_context: 수정 컨텍스트 (배치 정보 포함)
             template_type: 템플릿 타입
-            layer_name: 레이어명
             modification_type: 수정 타입
-            table_access_info: 테이블 접근 정보
 
         Returns:
             List[Dict[str, Any]]: 수정 계획 리스트
         """
         plans = []
-
-        # LLM 호출 함수
-        def llm_call(prompt: str) -> Dict[str, Any]:
-            response, error = self.error_handler.retry_with_backoff(
-                self.llm_provider.call, prompt
-            )
-
-            if error:
-                raise error
-
-            if not self.llm_provider.validate_response(response):
-                raise ValueError("LLM 응답이 유효하지 않습니다.")
-
-            return response
+        batch = modification_context.code_snippets
+        layer_name = modification_context.layer
+        table_access_info = modification_context.table_access_info
 
         # 배치 처리
         try:
-            response = self.batch_processor.process_batch(
-                batch=batch,
-                template_type=template_type,
-                variables={
-                    "table_info": self._format_table_info(table_access_info),
-                    "layer_name": layer_name,
-                    "file_count": len(batch),
-                },
-                llm_call_func=llm_call,
+            # variables에서 table_info와 layer_name 추출
+            table_info_str = self._format_table_info(table_access_info)
+
+            # extra_variables 준비
+            extra_vars = {"file_count": len(batch)}
+
+            input_data = DiffGeneratorInput(
+                code_snippets=batch,
+                table_info=table_info_str,
+                layer_name=layer_name,
+                extra_variables=extra_vars,
             )
+
+            # Diff 생성
+            response = self.diff_generator.generate(input_data)
 
             # LLM 응답 파싱
             parsed_modifications = self.code_patcher.parse_llm_response(response)
@@ -454,7 +492,7 @@ class CodeModifier:
             for file_info in batch:
                 plans.append(
                     ModificationPlan(
-                        file_path=file_info.get("path", ""),
+                        file_path=file_info.path,
                         layer_name=layer_name,
                         modification_type=modification_type,
                         status="failed",
@@ -483,3 +521,88 @@ class CodeModifier:
         }
 
         return json.dumps(table_info, indent=2, ensure_ascii=False)
+
+    def create_batches(
+        self,
+        code_snippets: List[CodeSnippet],
+        table_access_info: TableAccessInfo,
+        layer: str,
+    ) -> List[ModificationContext]:
+        """
+        파일 목록을 토큰 크기 기반으로 배치로 분할합니다.
+
+        Args:
+            code_snippets: 코드 스니펫 리스트
+            table_access_info: 테이블 접근 정보
+            layer: 레이어 이름
+
+        Returns:
+            List[ModificationContext]: 분할된 수정 컨텍스트 리스트
+        """
+        if not code_snippets:
+            return []
+
+        batches: List[ModificationContext] = []
+        current_snippets: List[CodeSnippet] = []
+
+        # 기본 정보 준비 (반복문 밖에서 한 번만 처리)
+        formatted_table_info = self._format_table_info(table_access_info)
+        max_tokens = self.config_manager.get("max_tokens_per_batch", 2000)
+
+        input_empty_data = DiffGeneratorInput(
+            code_snippets=[], table_info=formatted_table_info, layer_name=layer
+        )
+
+        # 빈 프롬프트 생성 및 토큰 계산
+        empty_prompt = self.diff_generator.create_prompt(input_empty_data)
+        empty_num_tokens = self.diff_generator.calculate_token_size(empty_prompt)
+
+        # 스니펫 간 구분자 토큰 계산 ("\n\n")
+        separator_tokens = self.diff_generator.calculate_token_size("\n\n")
+
+        current_batch_tokens = empty_num_tokens
+
+        for snippet in code_snippets:
+            # 스니펫 포맷팅 및 토큰 계산
+            snippet_formatted = (
+                f"=== File Path (Absolute): {snippet.path} ===\n{snippet.content}"
+            )
+            snippet_tokens = self.diff_generator.calculate_token_size(snippet_formatted)
+
+            # 첫 번째 스니펫이 아니면 구분자 추가
+            tokens_to_add = snippet_tokens
+            if current_snippets:
+                tokens_to_add += separator_tokens
+
+            if current_snippets and (current_batch_tokens + tokens_to_add) > max_tokens:
+                # 현재 배치를 저장하고 새로운 배치 시작
+                batches.append(
+                    ModificationContext(
+                        code_snippets=current_snippets,
+                        table_access_info=table_access_info,
+                        file_count=len(current_snippets),
+                        layer=layer,
+                    )
+                )
+                current_snippets = [snippet]
+                current_batch_tokens = empty_num_tokens + snippet_tokens
+            else:
+                # 현재 배치에 추가
+                current_snippets.append(snippet)
+                current_batch_tokens += tokens_to_add
+
+        # 마지막 배치 추가
+        if current_snippets:
+            batches.append(
+                ModificationContext(
+                    code_snippets=current_snippets,
+                    table_access_info=table_access_info,
+                    file_count=len(current_snippets),
+                    layer=layer,
+                )
+            )
+
+        logger.info(
+            f"총 {len(code_snippets)}개 파일을 {len(batches)}개 배치(ModificationContext)로 분할했습니다."
+        )
+        return batches

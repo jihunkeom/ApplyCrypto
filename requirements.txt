@@ -21,6 +21,7 @@ anytree>=2.9.0
 pyyaml>=6.0
 tiktoken>=0.5.0
 tqdm>=4.66.0
+jinja2>=3.1.6
 
 # LLM 프로바이더 (선택적)
 ibm-watsonx-ai>=1.0.0  # WatsonX.AI 사용 시

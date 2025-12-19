@@ -356,12 +356,14 @@ class CallGraphBuilder:
                         call_relations.append(relation)
                         # callee가 인터페이스인 경우, 이를 구현하는 클래스를 찾아 추가 CallRelation 생성
                         # callee_signature 형식: "ClassName.methodName"
-                        if '.' in callee_signature:
-                            callee_class_name = callee_signature.split('.')[0]
-                            
+                        if "." in callee_signature:
+                            callee_class_name = callee_signature.split(".")[0]
+
                             # callee 클래스가 인터페이스인지 확인
                             if callee_class_name in self.class_info_map:
-                                callee_class_info = self.class_info_map[callee_class_name]
+                                callee_class_info = self.class_info_map[
+                                    callee_class_name
+                                ]
                                 if callee_class_info.is_interface_class:
                                     # 해당 인터페이스를 구현하는 클래스 찾기
                                     for impl_cls in all_classes:
@@ -374,30 +376,45 @@ class CallGraphBuilder:
                                                 interface_found = True
                                                 break
                                             # 패키지 포함 전체 이름 비교
-                                            if '.' in interface_name:
-                                                simple_interface_name = interface_name.split('.')[-1]
-                                                if simple_interface_name == callee_class_name:
+                                            if "." in interface_name:
+                                                simple_interface_name = (
+                                                    interface_name.split(".")[-1]
+                                                )
+                                                if (
+                                                    simple_interface_name
+                                                    == callee_class_name
+                                                ):
                                                     interface_found = True
                                                     break
                                             # callee_class_name이 패키지 포함 전체 이름인 경우
-                                            if '.' in callee_class_name:
-                                                simple_callee_name = callee_class_name.split('.')[-1]
-                                                if interface_name == simple_callee_name or interface_name == callee_class_name:
+                                            if "." in callee_class_name:
+                                                simple_callee_name = (
+                                                    callee_class_name.split(".")[-1]
+                                                )
+                                                if (
+                                                    interface_name == simple_callee_name
+                                                    or interface_name
+                                                    == callee_class_name
+                                                ):
                                                     interface_found = True
                                                     break
-                                        
+
                                         if interface_found:
                                             # 구현 클래스를 callee로 하는 추가 CallRelation 생성
-                                            callee_method_name = callee_signature.split('.')[-1]
-                                            impl_callee_signature = f"{impl_cls.name}.{callee_method_name}"
-                                            
+                                            callee_method_name = callee_signature.split(
+                                                "."
+                                            )[-1]
+                                            impl_callee_signature = (
+                                                f"{impl_cls.name}.{callee_method_name}"
+                                            )
+
                                             impl_relation = CallRelation(
                                                 caller=method_signature,
                                                 callee=impl_callee_signature,
                                                 caller_file=cls.file_path,
-                                                callee_file=impl_cls.file_path
+                                                callee_file=impl_cls.file_path,
                                             )
-                                            call_relations.append(impl_relation)  
+                                            call_relations.append(impl_relation)
 
         # 그래프에 노드 및 간선 추가
         for relation in call_relations:
