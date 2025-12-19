@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Set
 
-from config.config_manager import ConfigurationManager
+from config.config_manager import Configuration
 from models.modification_context import CodeSnippet
 from models.table_access_info import TableAccessInfo
 
@@ -51,7 +51,7 @@ class CallChainProcessor:
 
     def __init__(
         self,
-        config_manager: ConfigurationManager,
+        config: Configuration,
         llm_provider: Optional[LLMProvider] = None,
         project_root: Optional[Path] = None,
     ):
@@ -59,29 +59,27 @@ class CallChainProcessor:
         CallChainProcessor 초기화
 
         Args:
-            config_manager: 설정 관리자
+            config: 설정 객체
             llm_provider: LLM 프로바이더 (선택적, 설정에서 자동 생성)
             project_root: 프로젝트 루트 디렉토리 (선택적)
         """
-        self.config_manager = config_manager
+        self.config = config
         self.project_root = (
-            Path(project_root) if project_root else Path(config_manager.get("target_project"))
+            Path(project_root) if project_root else Path(config.target_project)
         )
 
         # LLM 프로바이더 초기화
         if llm_provider:
             self.llm_provider = llm_provider
         else:
-            llm_provider_name = config_manager.get("llm_provider", "watsonx_ai")
+            llm_provider_name = config.llm_provider
             self.llm_provider = create_llm_provider(provider_name=llm_provider_name)
 
         # DiffGenerator 초기화 (새로운 패턴)
         self.diff_generator = CallChainDiffGenerator(llm_provider=self.llm_provider)
 
         # 컴포넌트 초기화
-        self.error_handler = ErrorHandler(
-            max_retries=config_manager.get("max_retries", 3)
-        )
+        self.error_handler = ErrorHandler(max_retries=config.max_retries)
         self.result_tracker = ResultTracker()
 
         # 처리 완료된 파일 조합 추적 (단일 실행 내에서만)
@@ -519,7 +517,7 @@ class CallChainProcessor:
     ) -> Dict[str, Any]:
         """
         모든 테이블의 칼럼 정보를 취합합니다.
-        config_manager에서 encryption_code를 가져와 병합합니다.
+        config에서 encryption_code를 가져와 병합합니다.
 
         Args:
             table_access_info_list: 테이블 접근 정보 목록
@@ -531,14 +529,14 @@ class CallChainProcessor:
         for table_info in table_access_info_list:
             # config에서 해당 테이블의 encryption_code 정보 가져오기
             config_columns = {}
-            access_tables = self.config_manager.get("access_tables", [])
+            access_tables = self.config.access_tables
             for config_table in access_tables:
                 if config_table.table_name.lower() == table_info.table_name.lower():
                     for col in config_table.columns:
                         # Pydantic ColumnDetail 모델 또는 문자열 처리
-                        if hasattr(col, 'name'):
+                        if hasattr(col, "name"):
                             col_name = col.name.lower()
-                            encryption_code = getattr(col, 'encryption_code', "") or ""
+                            encryption_code = getattr(col, "encryption_code", "") or ""
                             if col_name and encryption_code:
                                 config_columns[col_name] = encryption_code
                     break

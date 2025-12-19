@@ -21,7 +21,10 @@ class ConfigurationError(Exception):
 class ColumnDetail(BaseModel):
     name: str = Field(..., description="컬럼 이름")
     new_column: Optional[bool] = Field(None, description="새로운 컬럼 여부")
-    column_type: Optional[Literal["dob", "ssn", "name", "sex"]] = Field(None, description="컬럼 타입 (dob: 생년월일, ssn: 주민번호, name: 이름, sex: 성별)")
+    column_type: Optional[Literal["dob", "ssn", "name", "sex"]] = Field(
+        None,
+        description="컬럼 타입 (dob: 생년월일, ssn: 주민번호, name: 이름, sex: 성별)",
+    )
     encryption_code: Optional[str] = Field(None, description="암호화 코드")
 
 
@@ -30,34 +33,9 @@ class AccessTable(BaseModel):
     columns: List[Union[str, ColumnDetail]] = Field(..., description="컬럼 목록")
 
 
-class Configuration(BaseModel):
-    target_project: str = Field(..., description="대상 프로젝트 루트 경로")
-    type_handler: bool = Field(False, description="Type Handler 사용 여부")
-    use_call_chain_mode: bool = Field(False, description="Call Chain 모드 사용 여부")
-    type_handler_package: Optional[str] = Field(None, description="Type Handler 패키지 이름")
-    type_handler_output_dir: Optional[str] = Field(None, description="Type Handler 출력 디렉터리")
-    source_file_types: List[str] = Field(..., description="수집할 소스 파일 확장자 목록")
-    sql_wrapping_type: Literal["mybatis", "jdbc", "jpa"] = Field(..., description="SQL Wrapping 타입")
-    access_tables: List[AccessTable] = Field(..., description="암호화 대상 테이블 및 칼럼 정보")
-    llm_provider: Literal["watsonx_ai", "claude_ai", "openai", "mock", "watsonx_ai_on_prem"] = Field("watsonx_ai", description="사용할 LLM 프로바이더")
-    exclude_dirs: List[str] = Field(default_factory=list, description="제외할 디렉터리 이름 목록")
-    exclude_files: List[str] = Field(default_factory=list, description="제외할 파일 패턴 목록")
-
-
-class ConfigurationManager:
-    """
-    JSON 설정 파일을 로드하고 검증하는 Configuration Manager 클래스
-
-    주요 기능:
-    1. JSON 설정 파일 로드 및 파싱
-    2. Pydantic을 통한 필수 필드 및 타입 검증
-    3. 타입 안전한 설정값 접근 인터페이스 제공
-    4. 에러 처리 및 기본값 설정
-    """
-
-    def __init__(self, config_file_path: str):
-        """
-        ConfigurationManager 초기화
+class TypeHandlerConfig(BaseModel):
+    package: str = Field(..., description="Type Handler 패키지 이름")
+    output_dir: str = Field(..., description="Type Handler 출력 디렉터리")
 
 
 class Configuration(BaseModel):

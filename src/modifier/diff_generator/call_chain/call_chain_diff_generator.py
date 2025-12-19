@@ -5,7 +5,6 @@ Call Chain Diff Generator 모듈
 가장 적절한 레이어에 암복호화 코드를 삽입하는 Diff를 생성합니다.
 """
 
-from typing import Any, Dict
 
 from ..base_diff_generator import BaseDiffGenerator, DiffGeneratorInput
 
@@ -50,6 +49,6 @@ class CallChainDiffGenerator(BaseDiffGenerator):
             template_str = f.read()
 
         from jinja2 import Template
+
         template = Template(template_str)
         return template.render(**batch_variables)
-

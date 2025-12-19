@@ -2,6 +2,7 @@
   "target_project": "/path/to/project",
   "source_file_types": [".java", ".xml"],
   "sql_wrapping_type": "mybatis",
+  "diff_gen_type": "mybatis_service",
   "access_tables": [
     {
       "table_name": "EMPLOYEE",

@@ -915,9 +915,13 @@ class CLIController:
                 return self._handle_modify_with_type_handler(args, config)
 
             # Call Chain 모드 분기
-            if config_manager.get("use_call_chain_mode", False):
+            # Call Chain 모드 분기
+            if (
+                getattr(config, "use_call_chain_mode", False)
+                or getattr(config, "diff_gen_type", "") == "call_chain"
+            ):
                 self.logger.info("Call Chain 모드로 수정을 진행합니다.")
-                return self._handle_modify_with_call_chain(args, config_manager)
+                return self._handle_modify_with_call_chain(args, config)
 
             # 기존 로직 (직접 코드 수정 방식)
             target_project = Path(config.target_project)
@@ -1114,7 +1118,7 @@ class CLIController:
             return 1
 
     def _handle_modify_with_call_chain(
-        self, args: argparse.Namespace, config_manager: ConfigurationManager
+        self, args: argparse.Namespace, config: Configuration
     ) -> int:
         """
         Call Chain 방식으로 암복호화를 적용하는 핸들러
@@ -1125,7 +1129,7 @@ class CLIController:
 
         Args:
             args: 파싱된 인자
-            config_manager: 설정 관리자
+            config: 설정 객체
 
         Returns:
             int: 종료 코드
@@ -1133,7 +1137,7 @@ class CLIController:
         try:
             from modifier.call_chain_processor import CallChainProcessor
 
-            target_project = config_manager.get("target_project")
+            target_project = config.target_project
 
             mode = "미리보기" if args.dry_run else "실제 수정"
             self.logger.info(f"Call Chain 모드로 파일 수정 시작 (모드: {mode})...")
@@ -1189,7 +1193,7 @@ class CLIController:
             # CallChainProcessor 초기화
             print("  [2/3] Call Chain Processor 초기화 중...")
             processor = CallChainProcessor(
-                config_manager=config_manager, project_root=Path(target_project)
+                config=config, project_root=Path(target_project)
             )
 
             # 처리 실행
