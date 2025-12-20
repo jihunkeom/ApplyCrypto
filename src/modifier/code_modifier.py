@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from config.config_manager import Configuration
 from models.diff_generator import DiffGeneratorInput
-from models.modification_context import CodeSnippet, ModificationContext
+from models.modification_context import ModificationContext
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
 
@@ -22,6 +22,7 @@ from .diff_generator import BaseDiffGenerator
 from .error_handler import ErrorHandler
 from .llm.llm_factory import create_llm_provider
 from .llm.llm_provider import LLMProvider
+from .modification_context_generator import ModificationContextGeneratorFactory
 from .result_tracker import ResultTracker
 
 logger = logging.getLogger("applycrypto.code_patcher")
@@ -62,6 +63,13 @@ class CodeModifier:
             self.llm_provider = create_llm_provider(provider_name=llm_provider_name)
 
         self.diff_generator = self._get_diff_generator()
+        self.modification_context_generator = (
+            ModificationContextGeneratorFactory.create(
+                config=self.config,
+                diff_generator=self.diff_generator,
+                generator_type="parallel",
+            )
+        )
 
         self.batch_processor = BatchProcessor(
             max_workers=config.max_workers,
@@ -206,83 +214,10 @@ class CodeModifier:
         plans = []
 
         try:
-            # 레이어별로 파일 그룹화
-            layer_files = table_access_info.layer_files
-
-            # 모든 레이어의 배치를 수집
-            all_batches: List[ModificationContext] = []
-
-            # 각 레이어별로 처리
-            for layer_name, file_paths in layer_files.items():
-                if not file_paths:
-                    continue
-
-                logger.info(
-                    f"레이어 '{layer_name}' 계획 생성 준비: {len(file_paths)}개 파일"
-                )
-
-                # 파일 내용 읽기 (항상 절대 경로 사용)
-                code_snippets: List[CodeSnippet] = []
-                for file_path in file_paths:
-                    try:
-                        # 파일 경로를 절대 경로로 변환
-                        file_path_obj = Path(file_path)
-                        if not file_path_obj.is_absolute():
-                            # 상대 경로인 경우 project_root와 결합
-                            full_path = self.project_root / file_path_obj
-                        else:
-                            # 절대 경로인 경우 그대로 사용
-                            full_path = file_path_obj
-
-                        # 절대 경로로 정규화
-                        full_path = full_path.resolve()
-
-                        if full_path.exists():
-                            with open(full_path, "r", encoding="utf-8") as f:
-                                content = f.read()
-                            code_snippets.append(
-                                CodeSnippet(
-                                    path=str(full_path),  # 절대 경로 저장
-                                    content=content,
-                                )
-                            )
-                        else:
-                            logger.warning(
-                                f"파일이 존재하지 않습니다: {full_path} (원본 경로: {file_path})"
-                            )
-                            # 파일이 없으면 'failed' 상태의 더미 계획 추가
-                            plans.append(
-                                ModificationPlan(
-                                    file_path=str(full_path),
-                                    layer_name=layer_name,
-                                    modification_type="encryption",
-                                    status="failed",
-                                    error="File not found",
-                                )
-                            )
-
-                    except Exception as e:
-                        logger.error(f"파일 읽기 실패: {file_path} - {e}")
-                        plans.append(
-                            ModificationPlan(
-                                file_path=str(file_path),
-                                layer_name=layer_name,
-                                modification_type="encryption",
-                                status="failed",
-                                error=str(e),
-                            )
-                        )
-
-                # 배치를 생성하여 토큰 제한 고려
-                modification_context_batches: List[ModificationContext] = (
-                    self.create_batches(
-                        code_snippets=code_snippets,
-                        table_access_info=table_access_info,
-                        layer=layer_name,
-                    )
-                )
-
-                all_batches.extend(modification_context_batches)
+            # ModificationContextGenerator를 사용하여 배치 생성
+            all_batches = self.modification_context_generator.generate(
+                table_access_info
+            )
 
             # 병렬 배치 처리 함수 정의
             def process_context_wrapper(
@@ -521,88 +456,3 @@ class CodeModifier:
         }
 
         return json.dumps(table_info, indent=2, ensure_ascii=False)
-
-    def create_batches(
-        self,
-        code_snippets: List[CodeSnippet],
-        table_access_info: TableAccessInfo,
-        layer: str,
-    ) -> List[ModificationContext]:
-        """
-        파일 목록을 토큰 크기 기반으로 배치로 분할합니다.
-
-        Args:
-            code_snippets: 코드 스니펫 리스트
-            table_access_info: 테이블 접근 정보
-            layer: 레이어 이름
-
-        Returns:
-            List[ModificationContext]: 분할된 수정 컨텍스트 리스트
-        """
-        if not code_snippets:
-            return []
-
-        batches: List[ModificationContext] = []
-        current_snippets: List[CodeSnippet] = []
-
-        # 기본 정보 준비 (반복문 밖에서 한 번만 처리)
-        formatted_table_info = self._format_table_info(table_access_info)
-        max_tokens = self.config.max_tokens_per_batch
-
-        input_empty_data = DiffGeneratorInput(
-            code_snippets=[], table_info=formatted_table_info, layer_name=layer
-        )
-
-        # 빈 프롬프트 생성 및 토큰 계산
-        empty_prompt = self.diff_generator.create_prompt(input_empty_data)
-        empty_num_tokens = self.diff_generator.calculate_token_size(empty_prompt)
-
-        # 스니펫 간 구분자 토큰 계산 ("\n\n")
-        separator_tokens = self.diff_generator.calculate_token_size("\n\n")
-
-        current_batch_tokens = empty_num_tokens
-
-        for snippet in code_snippets:
-            # 스니펫 포맷팅 및 토큰 계산
-            snippet_formatted = (
-                f"=== File Path (Absolute): {snippet.path} ===\n{snippet.content}"
-            )
-            snippet_tokens = self.diff_generator.calculate_token_size(snippet_formatted)
-
-            # 첫 번째 스니펫이 아니면 구분자 추가
-            tokens_to_add = snippet_tokens
-            if current_snippets:
-                tokens_to_add += separator_tokens
-
-            if current_snippets and (current_batch_tokens + tokens_to_add) > max_tokens:
-                # 현재 배치를 저장하고 새로운 배치 시작
-                batches.append(
-                    ModificationContext(
-                        code_snippets=current_snippets,
-                        table_access_info=table_access_info,
-                        file_count=len(current_snippets),
-                        layer=layer,
-                    )
-                )
-                current_snippets = [snippet]
-                current_batch_tokens = empty_num_tokens + snippet_tokens
-            else:
-                # 현재 배치에 추가
-                current_snippets.append(snippet)
-                current_batch_tokens += tokens_to_add
-
-        # 마지막 배치 추가
-        if current_snippets:
-            batches.append(
-                ModificationContext(
-                    code_snippets=current_snippets,
-                    table_access_info=table_access_info,
-                    file_count=len(current_snippets),
-                    layer=layer,
-                )
-            )
-
-        logger.info(
-            f"총 {len(code_snippets)}개 파일을 {len(batches)}개 배치(ModificationContext)로 분할했습니다."
-        )
-        return batches
