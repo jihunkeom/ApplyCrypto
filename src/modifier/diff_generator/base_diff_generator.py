@@ -1,41 +1,16 @@
 import hashlib
 import logging
 import sys
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import tiktoken
 from jinja2 import Template
 
-from models.modification_context import CodeSnippet
+from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
 from modifier.llm.llm_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class DiffGeneratorInput:
-    """Diff 생성기 입력 데이터"""
-
-    code_snippets: List["CodeSnippet"]
-    """
-    소스 파일 리스트
-    [CodeSnippet(path="/abs/path/to/file.py", content="..."), ...]
-    """
-
-    table_info: str
-    """테이블 스키마 정보 (JSON string or formatted string)"""
-
-    layer_name: str
-    """현재 처리 중인 레이어 이름 (Service, Controller 등)"""
-
-    extra_variables: Dict[str, Any] = None
-    """기타 템플릿 변수"""
-
-    def __post_init__(self):
-        if self.extra_variables is None:
-            self.extra_variables = {}
 
 
 def render_template(template_str: str, variables: Dict[str, Any]) -> str:
@@ -146,7 +121,7 @@ class BaseDiffGenerator:
 
         return render_template(template_str, batch_variables)
 
-    def generate(self, input_data: DiffGeneratorInput) -> Dict[str, Any]:
+    def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
         """
         입력 데이터를 바탕으로 Diff를 생성합니다.
 
@@ -154,7 +129,7 @@ class BaseDiffGenerator:
             input_data: Diff 생성 입력
 
         Returns:
-            Dict[str, Any]: LLM 응답 (Diff 포함)
+            DiffGeneratorOutput: LLM 응답 (Diff 포함)
         """
         prompt = self.create_prompt(input_data)
 
@@ -168,10 +143,16 @@ class BaseDiffGenerator:
         try:
             response = self.llm_provider.call(prompt)
 
-            # 캐시에 저장
-            self._prompt_cache[cache_key] = response
+            # DiffGeneratorOutput 객체 생성
+            output = DiffGeneratorOutput(
+                content=response.get("content", ""),
+                tokens_used=response.get("tokens_used", 0),
+            )
 
-            return response
+            # 캐시에 저장
+            self._prompt_cache[cache_key] = output
+
+            return output
         except Exception as e:
             logger.error(f"Diff 생성 중 오류 발생: {e}")
             raise

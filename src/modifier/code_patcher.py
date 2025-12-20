@@ -10,7 +10,9 @@ import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+from models.diff_generator import DiffGeneratorOutput
 
 logger = logging.getLogger("applycrypto.code_patcher")
 
@@ -37,13 +39,14 @@ class CodePatcher:
         """
         self.project_root = Path(project_root) if project_root else Path.cwd()
 
-    def parse_llm_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def parse_llm_response(
+        self, response: Union[Dict[str, Any], DiffGeneratorOutput]
+    ) -> List[Dict[str, Any]]:
         """
         LLM 응답을 파싱하여 수정 정보를 추출합니다.
 
         Args:
-            response: LLM 응답 딕셔너리
-                - content: JSON 형식의 응답 문자열
+            response: LLM 응답 (Dictionary or DiffGeneratorOutput)
 
         Returns:
             List[Dict[str, Any]]: 수정 정보 리스트
@@ -55,7 +58,11 @@ class CodePatcher:
         """
         try:
             # 응답에서 content 추출
-            content = response.get("content", "")
+            if isinstance(response, DiffGeneratorOutput):
+                content = response.content
+            else:
+                content = response.get("content", "")
+
             if not content:
                 raise CodePatcherError("LLM 응답에 content가 없습니다.")
 

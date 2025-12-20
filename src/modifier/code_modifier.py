@@ -11,13 +11,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.config_manager import Configuration
+from models.diff_generator import DiffGeneratorInput
 from models.modification_context import CodeSnippet, ModificationContext
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
 
 from .batch_processor import BatchProcessor
 from .code_patcher import CodePatcher
-from .diff_generator import BaseDiffGenerator, DiffGeneratorInput
+from .diff_generator import BaseDiffGenerator
 from .error_handler import ErrorHandler
 from .llm.llm_factory import create_llm_provider
 from .llm.llm_provider import LLMProvider
@@ -441,10 +442,12 @@ class CodeModifier:
             )
 
             # Diff 생성
-            response = self.diff_generator.generate(input_data)
+            diff_out = self.diff_generator.generate(input_data)
+
+            tokens_used = diff_out.tokens_used
 
             # LLM 응답 파싱
-            parsed_modifications = self.code_patcher.parse_llm_response(response)
+            parsed_modifications = self.code_patcher.parse_llm_response(diff_out)
 
             # 각 수정 사항에 대해 계획 생성
             for mod in parsed_modifications:
@@ -470,7 +473,7 @@ class CodeModifier:
                     modification_type=modification_type,
                     unified_diff=unified_diff,
                     reason=reason,
-                    tokens_used=response.get("tokens_used", 0),
+                    tokens_used=tokens_used,
                     status="pending",
                 )
 

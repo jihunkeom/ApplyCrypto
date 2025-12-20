@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional, Set
 
 from config.config_manager import Configuration
+from models.diff_generator import DiffGeneratorInput
 from models.modification_context import CodeSnippet
 from models.table_access_info import TableAccessInfo
 
-from .diff_generator import DiffGeneratorInput
 from .diff_generator.call_chain import CallChainDiffGenerator
 from .error_handler import ErrorHandler
 from .llm.llm_factory import create_llm_provider
@@ -632,22 +632,10 @@ class CallChainProcessor:
 
         # DiffGenerator로 LLM 호출
         try:
-            response = self.diff_generator.generate(diff_input)
-
-            if not self.llm_provider.validate_response(response):
-                logger.error("LLM 응답이 유효하지 않습니다.")
-                for snippet in code_snippets:
-                    results.append(
-                        {
-                            "file_path": snippet.path,
-                            "status": "failed",
-                            "error": "Invalid LLM response",
-                        }
-                    )
-                return results
+            diff_out = self.diff_generator.generate(diff_input)
 
             # LLM 응답 파싱 (자체 파싱 메서드 사용)
-            parsed_modifications = self._parse_llm_response(response)
+            parsed_modifications = self._parse_llm_response(diff_out.content)
 
             # 원본 파일 내용 맵 (path -> content)
             original_content_map = {f["path"]: f["content"] for f in files_with_content}
@@ -779,7 +767,7 @@ class CallChainProcessor:
 
         return results
 
-    def _parse_llm_response(self, response: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _parse_llm_response(self, content: str) -> List[Dict[str, Any]]:
         """
         LLM 응답을 파싱하여 수정 정보를 추출합니다.
         제어 문자 처리를 포함한 자체 파싱 로직입니다.
@@ -794,18 +782,14 @@ class CallChainProcessor:
             Exception: 파싱 실패 시
         """
 
-        # 응답에서 content 추출
-        content = response.get("content", "")
-
         # 디버깅: LLM 원본 응답 로깅
-        logger.debug(f"LLM 원본 응답 키: {list(response.keys())}")
         logger.debug(f"LLM content 길이: {len(content) if content else 0}")
         if content:
             # 처음 500자만 로깅 (너무 길면 잘림)
             preview = content[:500] + "..." if len(content) > 500 else content
             logger.debug(f"LLM content 미리보기:\n{preview}")
         else:
-            logger.warning(f"LLM 응답 content가 비어있음. 전체 응답: {response}")
+            logger.warning(f"LLM 응답 content가 비어있음. 전체 응답: {content}")
 
         if not content:
             raise Exception("LLM 응답에 content가 없습니다.")

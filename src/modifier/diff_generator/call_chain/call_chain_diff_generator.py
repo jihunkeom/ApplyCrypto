@@ -5,8 +5,9 @@ Call Chain Diff Generator 모듈
 가장 적절한 레이어에 암복호화 코드를 삽입하는 Diff를 생성합니다.
 """
 
+from models.diff_generator import DiffGeneratorInput
 
-from ..base_diff_generator import BaseDiffGenerator, DiffGeneratorInput
+from ..base_diff_generator import BaseDiffGenerator
 
 
 class CallChainDiffGenerator(BaseDiffGenerator):
