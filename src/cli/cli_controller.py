@@ -159,6 +159,24 @@ class CLIController:
             help="사용자 확인 없이 모든 변경사항을 자동으로 적용합니다",
         )
 
+        # clear 명령어 서브파서
+        clear_parser = subparsers.add_parser(
+            "clear",
+            help="분석 결과 및 임시 파일을 삭제합니다",
+            description="분석 결과 및 임시 파일을 삭제합니다.",
+        )
+        clear_parser.add_argument(
+            "--config",
+            type=str,
+            default="config.json",
+            help="설정 파일 경로 (기본값: config.json)",
+        )
+        clear_parser.add_argument(
+            "--backup",
+            action="store_true",
+            help="삭제 전 백업을 생성합니다",
+        )
+
         return parser
 
     def _setup_logging(self) -> logging.Logger:
@@ -264,6 +282,8 @@ class CLIController:
                 return self._handle_list(parsed_args)
             elif parsed_args.command == "modify":
                 return self._handle_modify(parsed_args)
+            elif parsed_args.command == "clear":
+                return self._handle_clear(parsed_args)
             else:
                 self.logger.error(f"알 수 없는 명령어: {parsed_args.command}")
                 return 1
@@ -276,6 +296,43 @@ class CLIController:
             return 1
         except Exception as e:
             self.logger.exception(f"명령어 실행 중 오류 발생: {e}")
+            return 1
+
+    def _handle_clear(self, args: argparse.Namespace) -> int:
+        """
+        clear 명령어 핸들러
+
+        Args:
+            args: 파싱된 인자
+
+        Returns:
+            int: 종료 코드
+        """
+        try:
+            # 설정 파일 로드
+            config = self.load_config(args.config)
+            target_project = Path(config.target_project)
+
+            self.logger.info("데이터 삭제 시작...")
+
+            # DataPersistenceManager 초기화
+            persistence_manager = DataPersistenceManager(target_project)
+
+            # 삭제 실행
+            persistence_manager.clear_all(use_backup=args.backup)
+
+            print("모든 데이터가 삭제되었습니다.")
+            if args.backup:
+                print("백업이 생성되었습니다.")
+
+            return 0
+
+        except ConfigurationError as e:
+            print(f"오류: {e}", file=sys.stderr)
+            return 1
+        except Exception as e:
+            self.logger.exception(f"clear 명령어 실행 중 오류: {e}")
+            print(f"오류: {e}", file=sys.stderr)
             return 1
 
     def _handle_analyze(self, args: argparse.Namespace) -> int:
@@ -303,93 +360,179 @@ class CLIController:
             # 1. 소스 파일 수집
             print("  [1/5] 소스 파일 수집 중...")
             self.logger.info("소스 파일 수집 시작")
-            collector = SourceFileCollector(config)
-            source_files = list[SourceFile](collector.collect())
-            print(f"  ✓ {len(source_files)}개의 소스 파일을 수집했습니다.")
-            self.logger.info(f"소스 파일 수집 완료: {len(source_files)}개")
 
-            # 소스 파일 저장
-            persistence_manager.save_to_file(
-                [f.to_dict() for f in source_files], "source_files.json"
-            )
+            try:
+                source_files_data = persistence_manager.load_from_file(
+                    "source_files.json", SourceFile
+                )
+                source_files = [
+                    SourceFile.from_dict(f) if isinstance(f, dict) else f
+                    for f in source_files_data
+                ]
+                print(f"  ✓ 캐시에서 {len(source_files)}개의 소스 파일을 로드했습니다.")
+                self.logger.info(f"소스 파일 로드 완료 (캐시): {len(source_files)}개")
+            except PersistenceError:
+                collector = SourceFileCollector(config)
+                source_files = list[SourceFile](collector.collect())
+                print(f"  ✓ {len(source_files)}개의 소스 파일을 수집했습니다.")
+                self.logger.info(f"소스 파일 수집 완료: {len(source_files)}개")
 
-            # 2. Java AST 파싱 및 Call Graph 생성 (파싱 결과 재사용을 위해 먼저 수행)
-            print("  [2/5] Java AST 파싱 및 Call Graph 생성 중...")
-            self.logger.info("Java AST 파싱 및 Call Graph 생성 시작")
-            java_parser = JavaASTParser(cache_manager=cache_manager)
-            java_files = [f.path for f in source_files if f.extension == ".java"]
+                # 소스 파일 저장
+                persistence_manager.save_to_file(
+                    [f.to_dict() for f in source_files], "source_files.json"
+                )
 
-            # Call Graph 생성 (내부에서 모든 Java 파일 파싱)
-            call_graph_builder = CallGraphBuilder(
-                java_parser=java_parser, cache_manager=cache_manager
-            )
-            call_graph_builder.build_call_graph(java_files)
-            endpoints = call_graph_builder.get_endpoints()
-
-            # 파싱된 결과를 사용하여 Java 파싱 결과 생성
+            # Step 2 & 5 캐시 확인 (DB Access Info가 존재하면 Step 2도 건너뛸 수 있음)
+            # 단, Step 5를 실행하려면 CallGraphBuilder가 필요하므로,
+            # TableAccessInfo가 있을 때만 전체 스킵이 가능함.
+            skip_step_2_and_5 = False
+            table_access_info_list = []
             java_parse_results = []
-            for java_file_path in java_files:
-                classes = call_graph_builder.get_classes_for_file(java_file_path)
-                if classes:
-                    # SourceFile 객체 찾기
-                    source_file = next(
-                        (f for f in source_files if f.path == java_file_path), None
-                    )
-                    if source_file:
-                        java_parse_results.append(
-                            {
-                                "file": source_file.to_dict(),
-                                "classes": [cls.to_dict() for cls in classes],
-                            }
-                        )
+            endpoints = []
+            call_graph_data = {}
 
-            print(f"  ✓ {len(java_parse_results)}개의 Java 파일을 파싱했습니다.")
-            print(f"  ✓ {len(endpoints)}개의 엔드포인트를 식별했습니다.")
-            self.logger.info(
-                f"Java AST 파싱 및 Call Graph 생성 완료: {len(java_parse_results)}개 파일, {len(endpoints)}개 엔드포인트"
-            )
+            try:
+                # 필요한 모든 파일이 있는지 확인
+                table_access_info_data = persistence_manager.load_from_file(
+                    "table_access_info.json", TableAccessInfo
+                )
+                call_graph_data = persistence_manager.load_from_file("call_graph.json")
+                java_parse_results = persistence_manager.load_from_file(
+                    "java_parse_results.json"
+                )
+
+                # 데이터 로드
+                table_access_info_list = [
+                    TableAccessInfo.from_dict(t) if isinstance(t, dict) else t
+                    for t in table_access_info_data
+                ]
+                endpoints = call_graph_data.get("endpoints", [])
+
+                skip_step_2_and_5 = True
+                print("  [2/5] Java AST 파싱 및 Call Graph 생성 (캐시 사용)")
+                print(
+                    f"  ✓ 캐시에서 {len(java_parse_results)}개의 Java 파싱 결과를 로드했습니다."
+                )
+                print(
+                    f"  ✓ 캐시에서 {len(endpoints)}개의 엔드포인트 정보를 로드했습니다."
+                )
+
+            except PersistenceError:
+                skip_step_2_and_5 = False
+
+            # Java Parser 초기화 (Step 3에서도 사용될 수 있음)
+            java_parser = JavaASTParser(cache_manager=cache_manager)
+
+            if not skip_step_2_and_5:
+                # 2. Java AST 파싱 및 Call Graph 생성 (파싱 결과 재사용을 위해 먼저 수행)
+                print("  [2/5] Java AST 파싱 및 Call Graph 생성 중...")
+                self.logger.info("Java AST 파싱 및 Call Graph 생성 시작")
+
+                java_files = [f.path for f in source_files if f.extension == ".java"]
+
+                # Call Graph 생성 (내부에서 모든 Java 파일 파싱)
+                call_graph_builder = CallGraphBuilder(
+                    java_parser=java_parser, cache_manager=cache_manager
+                )
+                call_graph_builder.build_call_graph(java_files)
+                endpoints = call_graph_builder.get_endpoints()
+
+                # 파싱된 결과를 사용하여 Java 파싱 결과 생성
+                java_parse_results = []
+                for java_file_path in java_files:
+                    classes = call_graph_builder.get_classes_for_file(java_file_path)
+                    if classes:
+                        # SourceFile 객체 찾기
+                        source_file = next(
+                            (f for f in source_files if f.path == java_file_path), None
+                        )
+                        if source_file:
+                            java_parse_results.append(
+                                {
+                                    "file": source_file.to_dict(),
+                                    "classes": [cls.to_dict() for cls in classes],
+                                }
+                            )
+
+                print(f"  ✓ {len(java_parse_results)}개의 Java 파일을 파싱했습니다.")
+                print(f"  ✓ {len(endpoints)}개의 엔드포인트를 식별했습니다.")
+                self.logger.info(
+                    f"Java AST 파싱 및 Call Graph 생성 완료: {len(java_parse_results)}개 파일, {len(endpoints)}개 엔드포인트"
+                )
+
+                # Java 파싱 결과 저장
+                persistence_manager.save_to_file(
+                    java_parse_results, "java_parse_results.json"
+                )
 
             # 3. SQL Parsing Strategy 초기 생성
             print("  [3/5] SQL 추출 중...")
             self.logger.info("SQL 추출 시작")
 
             sql_wrapping_type = config.sql_wrapping_type
+            sql_strategy = create_strategy(sql_wrapping_type)  # Step 5를 위해 필요
+            xml_parser = XMLMapperParser()  # Step 5를 위해 필요
 
-            # SQL Extractor 초기화
-            if config.use_llm_parser:
-                print("  [INFO] LLM 파서를 사용하여 SQL을 추출합니다.")
-                self.logger.info("LLM SQL Extractor 사용")
+            try:
+                from models.sql_extraction_output import SQLExtractionOutput
 
-                # LLM Provider 이름 가져오기 (설정에서)
-                llm_provider = config.llm_provider
-
-                sql_extractor = LLMSQLExtractor(
-                    sql_wrapping_type=sql_wrapping_type, llm_provider_name=llm_provider
+                sql_extraction_data = persistence_manager.load_from_file(
+                    "sql_extraction_results.json", SQLExtractionOutput
                 )
-
-                # SQL 추출 실행
-                sql_extraction_results = sql_extractor.extract_from_files(source_files)
+                sql_extraction_results = [
+                    SQLExtractionOutput.from_dict(r) if isinstance(r, dict) else r
+                    for r in sql_extraction_data
+                ]
                 print(
-                    f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+                    f"  ✓ 캐시에서 {len(sql_extraction_results)}개의 SQL 추출 결과를 로드했습니다."
                 )
-            else:
-                print("  [INFO] 기본 정적 분석 파서를 사용하여 SQL을 추출합니다.")
-                self.logger.info("기본 SQL Extractor 사용")
-
-                sql_wrapping_type = config.sql_wrapping_type
-                sql_strategy = create_strategy(sql_wrapping_type)
-                xml_parser = XMLMapperParser()
-
-                sql_extractor = SQLExtractor(
-                    strategy=sql_strategy,
-                    xml_parser=xml_parser,
-                    java_parser=java_parser,
+                self.logger.info(
+                    f"SQL 추출 결과 로드 완료 (캐시): {len(sql_extraction_results)}개 파일"
                 )
 
-                # SQL 추출 실행
-                sql_extraction_results = sql_extractor.extract_from_files(source_files)
-                print(
-                    f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+            except PersistenceError:
+                # SQL Extractor 초기화
+                if config.use_llm_parser:
+                    print("  [INFO] LLM 파서를 사용하여 SQL을 추출합니다.")
+                    self.logger.info("LLM SQL Extractor 사용")
+
+                    # LLM Provider 이름 가져오기 (설정에서)
+                    llm_provider = config.llm_provider
+
+                    sql_extractor = LLMSQLExtractor(
+                        sql_wrapping_type=sql_wrapping_type,
+                        llm_provider_name=llm_provider,
+                    )
+
+                    # SQL 추출 실행
+                    sql_extraction_results = sql_extractor.extract_from_files(
+                        source_files
+                    )
+                    print(
+                        f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+                    )
+                else:
+                    print("  [INFO] 기본 정적 분석 파서를 사용하여 SQL을 추출합니다.")
+                    self.logger.info("기본 SQL Extractor 사용")
+
+                    sql_extractor = SQLExtractor(
+                        strategy=sql_strategy,
+                        xml_parser=xml_parser,
+                        java_parser=java_parser,
+                    )
+
+                    # SQL 추출 실행
+                    sql_extraction_results = sql_extractor.extract_from_files(
+                        source_files
+                    )
+                    print(
+                        f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+                    )
+
+                # SQL 추출 결과 저장
+                persistence_manager.save_to_file(
+                    [r.to_dict() for r in sql_extraction_results],
+                    "sql_extraction_results.json",
                 )
 
             total_sql_queries = sum(len(r.sql_queries) for r in sql_extraction_results)
@@ -398,58 +541,54 @@ class CLIController:
                 f"SQL 추출 완료: {len(sql_extraction_results)}개 파일, {total_sql_queries}개 쿼리"
             )
 
-            # Java 파싱 결과 저장
-            persistence_manager.save_to_file(
-                java_parse_results, "java_parse_results.json"
-            )
+            if not skip_step_2_and_5:
+                # Call Graph 저장 (endpoint별 call tree 포함)
+                call_graph_data = {
+                    "endpoints": [
+                        ep.to_dict() if hasattr(ep, "to_dict") else str(ep)
+                        for ep in endpoints
+                    ],
+                    "node_count": call_graph_builder.call_graph.number_of_nodes()
+                    if call_graph_builder.call_graph
+                    else 0,
+                    "edge_count": call_graph_builder.call_graph.number_of_edges()
+                    if call_graph_builder.call_graph
+                    else 0,
+                    "call_trees": call_graph_builder.get_all_call_trees(
+                        max_depth=20
+                    ),  # 모든 엔드포인트의 call tree
+                }
+                persistence_manager.save_to_file(call_graph_data, "call_graph.json")
 
-            # SQL 추출 결과 저장 (xml_parse_results.json 대신)
-            persistence_manager.save_to_file(
-                [r.to_dict() for r in sql_extraction_results],
-                "sql_extraction_results.json",
-            )
+                # 5. DB 접근 정보 분석
+                print("  [5/5] DB 접근 정보 분석 중...")
+                self.logger.info("DB 접근 정보 분석 시작")
 
-            exit()
+                db_analyzer = DBAccessAnalyzer(
+                    config=config,
+                    sql_strategy=sql_strategy,
+                    xml_parser=xml_parser,
+                    java_parser=java_parser,
+                    call_graph_builder=call_graph_builder,
+                )
+                table_access_info_list = db_analyzer.analyze(source_files)
+                print(
+                    f"  ✓ {len(table_access_info_list)}개의 테이블 접근 정보를 분석했습니다."
+                )
+                self.logger.info(
+                    f"DB 접근 정보 분석 완료: {len(table_access_info_list)}개"
+                )
 
-            # Call Graph 저장 (endpoint별 call tree 포함)
-            call_graph_data = {
-                "endpoints": [
-                    ep.to_dict() if hasattr(ep, "to_dict") else str(ep)
-                    for ep in endpoints
-                ],
-                "node_count": call_graph_builder.call_graph.number_of_nodes()
-                if call_graph_builder.call_graph
-                else 0,
-                "edge_count": call_graph_builder.call_graph.number_of_edges()
-                if call_graph_builder.call_graph
-                else 0,
-                "call_trees": call_graph_builder.get_all_call_trees(
-                    max_depth=20
-                ),  # 모든 엔드포인트의 call tree
-            }
-            persistence_manager.save_to_file(call_graph_data, "call_graph.json")
-
-            # 5. DB 접근 정보 분석
-            print("  [5/5] DB 접근 정보 분석 중...")
-            self.logger.info("DB 접근 정보 분석 시작")
-            db_analyzer = DBAccessAnalyzer(
-                config=config,
-                sql_strategy=sql_strategy,
-                xml_parser=xml_parser,
-                java_parser=java_parser,
-                call_graph_builder=call_graph_builder,
-            )
-            table_access_info_list = db_analyzer.analyze(source_files)
-            print(
-                f"  ✓ {len(table_access_info_list)}개의 테이블 접근 정보를 분석했습니다."
-            )
-            self.logger.info(f"DB 접근 정보 분석 완료: {len(table_access_info_list)}개")
-
-            # DB 접근 정보 저장
-            persistence_manager.save_to_file(
-                [info.to_dict() for info in table_access_info_list],
-                "table_access_info.json",
-            )
+                # DB 접근 정보 저장
+                persistence_manager.save_to_file(
+                    [info.to_dict() for info in table_access_info_list],
+                    "table_access_info.json",
+                )
+            else:
+                print("  [5/5] DB 접근 정보 분석 (캐시 사용)")
+                print(
+                    f"  ✓ 캐시에서 {len(table_access_info_list)}개의 테이블 접근 정보를 로드했습니다."
+                )
 
             print("\n분석이 완료되었습니다.")
             print(f"  - 수집된 파일: {len(source_files)}개")
