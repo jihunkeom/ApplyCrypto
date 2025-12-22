@@ -27,6 +27,7 @@ from parser.java_ast_parser import JavaASTParser
 from parser.xml_mapper_parser import XMLMapperParser
 
 from analyzer.db_access_analyzer import DBAccessAnalyzer
+from analyzer.llm_sql_extractor import LLMSQLExtractor
 from analyzer.sql_extractor import SQLExtractor
 from analyzer.sql_parsing_strategy import create_strategy
 from collector.source_file_collector import SourceFileCollector
@@ -351,18 +352,45 @@ class CLIController:
             # 3. SQL Parsing Strategy 초기 생성
             print("  [3/5] SQL 추출 중...")
             self.logger.info("SQL 추출 시작")
+
             sql_wrapping_type = config.sql_wrapping_type
-            sql_strategy = create_strategy(sql_wrapping_type)
 
             # SQL Extractor 초기화
-            xml_parser = XMLMapperParser()
-            sql_extractor = SQLExtractor(
-                strategy=sql_strategy, xml_parser=xml_parser, java_parser=java_parser
-            )
+            if config.use_llm_parser:
+                print("  [INFO] LLM 파서를 사용하여 SQL을 추출합니다.")
+                self.logger.info("LLM SQL Extractor 사용")
 
-            # SQL 추출 실행
-            sql_extraction_results = sql_extractor.extract_from_files(source_files)
-            print(f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다.")
+                # LLM Provider 이름 가져오기 (설정에서)
+                llm_provider = config.llm_provider
+
+                sql_extractor = LLMSQLExtractor(
+                    sql_wrapping_type=sql_wrapping_type, llm_provider_name=llm_provider
+                )
+
+                # SQL 추출 실행
+                sql_extraction_results = sql_extractor.extract_from_files(source_files)
+                print(
+                    f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+                )
+            else:
+                print("  [INFO] 기본 정적 분석 파서를 사용하여 SQL을 추출합니다.")
+                self.logger.info("기본 SQL Extractor 사용")
+
+                sql_wrapping_type = config.sql_wrapping_type
+                sql_strategy = create_strategy(sql_wrapping_type)
+                xml_parser = XMLMapperParser()
+
+                sql_extractor = SQLExtractor(
+                    strategy=sql_strategy,
+                    xml_parser=xml_parser,
+                    java_parser=java_parser,
+                )
+
+                # SQL 추출 실행
+                sql_extraction_results = sql_extractor.extract_from_files(source_files)
+                print(
+                    f"  ✓ {len(sql_extraction_results)}개의 파일에서 SQL을 추출했습니다."
+                )
 
             total_sql_queries = sum(len(r.sql_queries) for r in sql_extraction_results)
             print(f"  ✓ 총 {total_sql_queries}개의 SQL 쿼리를 추출했습니다.")
@@ -380,6 +408,8 @@ class CLIController:
                 [r.to_dict() for r in sql_extraction_results],
                 "sql_extraction_results.json",
             )
+
+            exit()
 
             # Call Graph 저장 (endpoint별 call tree 포함)
             call_graph_data = {
