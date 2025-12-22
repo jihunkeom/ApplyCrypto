@@ -384,3 +384,37 @@ class DataPersistenceManager:
         """
         if self.cache_manager:
             self.cache_manager.set_cached_result(file_path, data)
+
+    def clear_all(self, use_backup: bool = False) -> None:
+        """
+        저장된 모든 데이터 삭제
+
+        Args:
+            use_backup: 삭제 전 백업 생성 여부
+        """
+        import shutil
+
+        if not self.output_dir.exists():
+            return
+
+        if use_backup:
+            try:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                # output_dir와 동일한 레벨에 백업 생성
+                backup_dir = self.output_dir.with_name(
+                    f"{self.output_dir.name}_backup_{timestamp}"
+                )
+                if backup_dir.exists():
+                    shutil.rmtree(backup_dir)
+
+                shutil.copytree(self.output_dir, backup_dir)
+                self.logger.info(f"데이터 백업 완료: {backup_dir}")
+            except Exception as e:
+                raise PersistenceError(f"백업 생성 실패: {e}")
+
+        try:
+            shutil.rmtree(self.output_dir)
+            self._ensure_output_directory()
+            self.logger.info("모든 데이터 삭제 완료")
+        except Exception as e:
+            raise PersistenceError(f"데이터 삭제 실패: {e}")

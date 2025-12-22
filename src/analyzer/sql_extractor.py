@@ -6,32 +6,14 @@ sql_extraction_results.json에 저장하는 모듈입니다.
 """
 
 import logging
-from dataclasses import dataclass, field
 from parser.java_ast_parser import JavaASTParser
 from parser.xml_mapper_parser import XMLMapperParser
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from models.source_file import SourceFile
+from models.sql_extraction_output import ExtractedSQLQuery, SQLExtractionOutput
 
 from .sql_parsing_strategy import SQLParsingStrategy
-
-
-@dataclass
-class ExtractedSQLQuery:
-    """
-    추출된 SQL 쿼리 정보를 저장하는 데이터 모델
-
-    Attributes:
-        id: 쿼리 식별자 (MyBatis: query id, JDBC/JPA: method name 등)
-        query_type: 쿼리 타입 (SELECT, INSERT, UPDATE, DELETE)
-        sql: SQL 쿼리 문자열
-        strategy_specific: 전략별 특정 정보 (dict)
-    """
-
-    id: str
-    query_type: str
-    sql: str
-    strategy_specific: Dict[str, Any] = field(default_factory=dict)
 
 
 class SQLExtractor:
@@ -62,7 +44,7 @@ class SQLExtractor:
 
     def extract_from_files(
         self, source_files: List[SourceFile]
-    ) -> List[Dict[str, Any]]:
+    ) -> List[SQLExtractionOutput]:
         """
         소스 파일들에서 SQL 쿼리 추출
 
@@ -70,8 +52,7 @@ class SQLExtractor:
             source_files: 분석할 소스 파일 목록
 
         Returns:
-            List[Dict[str, Any]]: 추출된 SQL 쿼리 정보 목록
-                각 항목은 {"file": {...}, "sql_queries": [...]} 형태
+            List[SQLExtractionOutput]: 추출된 SQL 쿼리 정보 목록
         """
         results = []
 
@@ -89,7 +70,9 @@ class SQLExtractor:
 
         return results
 
-    def _extract_mybatis(self, source_files: List[SourceFile]) -> List[Dict[str, Any]]:
+    def _extract_mybatis(
+        self, source_files: List[SourceFile]
+    ) -> List[SQLExtractionOutput]:
         """
         MyBatis 전략: XML Mapper 파일에서 SQL 추출
 
@@ -97,7 +80,7 @@ class SQLExtractor:
             source_files: 소스 파일 목록
 
         Returns:
-            List[Dict[str, Any]]: 추출 결과
+            List[SQLExtractionOutput]: 추출 결과
         """
         results = []
         xml_files = [f for f in source_files if f.extension == ".xml"]
@@ -120,17 +103,17 @@ class SQLExtractor:
                     }
 
                     sql_queries.append(
-                        {
-                            "id": query.get("id", ""),
-                            "query_type": query.get("query_type", "SELECT"),
-                            "sql": query.get("sql", ""),
-                            "strategy_specific": strategy_specific,
-                        }
+                        ExtractedSQLQuery(
+                            id=query.get("id", ""),
+                            query_type=query.get("query_type", "SELECT"),
+                            sql=query.get("sql", ""),
+                            strategy_specific=strategy_specific,
+                        )
                     )
 
                 if sql_queries:
                     results.append(
-                        {"file": xml_file.to_dict(), "sql_queries": sql_queries}
+                        SQLExtractionOutput(file=xml_file, sql_queries=sql_queries)
                     )
 
             except Exception as e:
@@ -138,7 +121,9 @@ class SQLExtractor:
 
         return results
 
-    def _extract_jdbc(self, source_files: List[SourceFile]) -> List[Dict[str, Any]]:
+    def _extract_jdbc(
+        self, source_files: List[SourceFile]
+    ) -> List[SQLExtractionOutput]:
         """
         JDBC 전략: Java 파일에서 JDBC SQL 추출
 
@@ -146,7 +131,7 @@ class SQLExtractor:
             source_files: 소스 파일 목록
 
         Returns:
-            List[Dict[str, Any]]: 추출 결과
+            List[SQLExtractionOutput]: 추출 결과
         """
         results = []
         java_files = [f for f in source_files if f.extension == ".java"]
@@ -154,15 +139,23 @@ class SQLExtractor:
         for java_file in java_files:
             try:
                 # JavaASTParser의 JDBC SQL 추출 기능 사용
-                sql_queries = self.java_parser.extract_jdbc_sql(java_file.path)
+                sql_queries_data = self.java_parser.extract_jdbc_sql(java_file.path)
 
-                if sql_queries:
+                if sql_queries_data:
                     # strategy_specific에 JDBC 특정 정보 저장
-                    for query in sql_queries:
-                        query["strategy_specific"] = query.get("strategy_specific", {})
+                    sql_queries = []
+                    for query in sql_queries_data:
+                        sql_queries.append(
+                            ExtractedSQLQuery(
+                                id=query.get("id", ""),
+                                query_type=query.get("query_type", "SELECT"),
+                                sql=query.get("sql", ""),
+                                strategy_specific=query.get("strategy_specific", {}),
+                            )
+                        )
 
                     results.append(
-                        {"file": java_file.to_dict(), "sql_queries": sql_queries}
+                        SQLExtractionOutput(file=java_file, sql_queries=sql_queries)
                     )
 
             except Exception as e:
@@ -170,7 +163,7 @@ class SQLExtractor:
 
         return results
 
-    def _extract_jpa(self, source_files: List[SourceFile]) -> List[Dict[str, Any]]:
+    def _extract_jpa(self, source_files: List[SourceFile]) -> List[SQLExtractionOutput]:
         """
         JPA 전략: Java 파일에서 JPA/JPQL 쿼리 추출
 
@@ -178,7 +171,7 @@ class SQLExtractor:
             source_files: 소스 파일 목록
 
         Returns:
-            List[Dict[str, Any]]: 추출 결과
+            List[SQLExtractionOutput]: 추출 결과
         """
         results = []
         java_files = [f for f in source_files if f.extension == ".java"]
@@ -186,15 +179,23 @@ class SQLExtractor:
         for java_file in java_files:
             try:
                 # JavaASTParser의 JPA SQL 추출 기능 사용
-                sql_queries = self.java_parser.extract_jpa_sql(java_file.path)
+                sql_queries_data = self.java_parser.extract_jpa_sql(java_file.path)
 
-                if sql_queries:
+                if sql_queries_data:
                     # strategy_specific에 JPA 특정 정보 저장
-                    for query in sql_queries:
-                        query["strategy_specific"] = query.get("strategy_specific", {})
+                    sql_queries = []
+                    for query in sql_queries_data:
+                        sql_queries.append(
+                            ExtractedSQLQuery(
+                                id=query.get("id", ""),
+                                query_type=query.get("query_type", "SELECT"),
+                                sql=query.get("sql", ""),
+                                strategy_specific=query.get("strategy_specific", {}),
+                            )
+                        )
 
                     results.append(
-                        {"file": java_file.to_dict(), "sql_queries": sql_queries}
+                        SQLExtractionOutput(file=java_file, sql_queries=sql_queries)
                     )
 
             except Exception as e:
