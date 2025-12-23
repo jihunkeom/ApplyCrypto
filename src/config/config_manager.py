@@ -68,7 +68,8 @@ class Configuration(BaseModel):
     max_workers: int = Field(4, description="병렬 처리 워커 수")
     max_retries: int = Field(3, description="최대 재시도 횟수")
     generate_full_source: bool = Field(
-        False, description="전체 소스 코드를 포함할지 여부 (true: 전체 코드, false: 관련 부분만)"
+        False,
+        description="전체 소스 코드를 포함할지 여부 (true: 전체 코드, false: 관련 부분만)",
     )
 
     def get_table_names(self) -> List[str]:

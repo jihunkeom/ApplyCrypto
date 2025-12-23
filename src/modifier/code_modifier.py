@@ -74,7 +74,9 @@ class CodeModifier:
         self.batch_processor = BatchProcessor(
             max_workers=config.max_workers,
         )
-        self.code_patcher = CodePatcher(project_root=self.project_root, config=self.config)
+        self.code_patcher = CodePatcher(
+            project_root=self.project_root, config=self.config
+        )
         self.error_handler = ErrorHandler(max_retries=config.max_retries)
         self.result_tracker = ResultTracker()
 

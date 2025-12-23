@@ -32,7 +32,9 @@ class CodePatcher:
     """
 
     def __init__(
-        self, project_root: Optional[Path] = None, config: Optional[Configuration] = None
+        self,
+        project_root: Optional[Path] = None,
+        config: Optional[Configuration] = None,
     ):
         """
         CodePatcher 초기화
@@ -217,7 +219,7 @@ class CodePatcher:
                 #     Path(diff_file_path).unlink()
 
                 # apply_patch_using_difflib 사용
-                
+
                 # 기존대로 unified diff 패치 적용
                 return self.apply_patch_using_difflib(
                     file_path=file_path, unified_diff=unified_diff, dry_run=dry_run
@@ -473,7 +475,9 @@ class CodePatcher:
                 return False, error_msg
 
             if dry_run:
-                logger.info(f"[DRY RUN] 전체 소스 코드 덮어쓰기 시뮬레이션: {file_path}")
+                logger.info(
+                    f"[DRY RUN] 전체 소스 코드 덮어쓰기 시뮬레이션: {file_path}"
+                )
                 return True, None
 
             # 전체 소스 코드를 파일에 쓰기

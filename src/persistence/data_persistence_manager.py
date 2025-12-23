@@ -50,14 +50,10 @@ class DataPersistenceManager:
             enable_cache: 캐싱 활성화 여부
         """
         self.target_project = Path(target_project)
-        self.output_dir = self.target_project / ".applycrypto" / "results"
-        # # output_dir이 지정되지 않으면 현재 작업 디렉터리 아래에 생성
-        # if output_dir is None:
-        #     from pathlib import Path as PathLib
-        #     current_dir = PathLib.cwd()
-        #     self.output_dir = current_dir / ".applycrypto" / "results"
-        # else:
-        #     self.output_dir = Path(output_dir)
+        if output_dir is None:
+            self.output_dir = self.target_project / ".applycrypto" / "results"
+        else:
+            self.output_dir = Path(output_dir)
         self.logger = logging.getLogger(__name__)
 
         # 결과 디렉터리 생성
