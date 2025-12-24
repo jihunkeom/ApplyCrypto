@@ -10,7 +10,6 @@ from config.config_manager import Configuration, load_config
 from models.diff_generator import DiffGeneratorInput
 from models.modification_context import CodeSnippet
 from modifier.code_modifier import CodeModifier
-from modifier.code_patcher import CodePatcher
 from persistence.data_persistence_manager import DataPersistenceManager
 
 # Add src to sys.path
@@ -156,34 +155,25 @@ def main():
         log_content.append("-" * 20)
 
         # Handle \n in text for pretty printing
-        content_str = diff_out.content
-        if content_str:
-            content_str = content_str.replace("\\n", "\n")
+        if diff_out.parsed_out:
+            formatted_lines = []
+            for mod in diff_out.parsed_out:
+                formatted_lines.append("-" * 30)
+                for k, v in mod.items():
+                    if k == "unified_diff":
+                        formatted_lines.append(f"{k}:")
+                        formatted_lines.append(str(v))
+                    else:
+                        formatted_lines.append(f"{k}: {v}")
+                formatted_lines.append("-" * 30)
+            content_str = "\n".join(formatted_lines)
+        else:
+            content_str = diff_out.content
+            if content_str:
+                content_str = content_str.replace("\\n", "\n")
+
         log_content.append(content_str)
         log_content.append("=" * 50 + "\n")
-
-        # Verify result
-        logger.info("Verifying result with CodePatcher...")
-        patcher = CodePatcher(project_root=project_root, config=config)
-        parsed = patcher.parse_llm_response(diff_out)
-
-        # Check if right
-        if parsed:
-            log_content.append("Parsed Modifications:")
-            for mod in parsed:
-                log_content.append(f"File: {mod.get('file_path')}")
-                log_content.append(f"Status: {mod.get('status', 'Unknown')}")
-                # log_content.append(f"Diff:\n{mod.get('unified_diff')}")
-
-            # Basic validation
-            if len(parsed) > 0:
-                logger.info("SUCCESS: Result parsed and contains modifications.")
-            else:
-                logger.warning("WARNING: Result parsed but list is empty.")
-        else:
-            logger.warning(
-                "FAILURE: No modifications parsed from response. The response might be malformed or empty."
-            )
 
         # Save to log file
         try:

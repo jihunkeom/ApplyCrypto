@@ -353,7 +353,11 @@ class CodeModifier:
             tokens_used = diff_out.tokens_used
 
             # LLM 응답 파싱
-            parsed_modifications = self.code_patcher.parse_llm_response(diff_out)
+            parsed_modifications = diff_out.parsed_out
+            if parsed_modifications is None:
+                raise ValueError(
+                    "LLM Response parsing failed (parsed_out is None). Check logs for details."
+                )
 
             # 각 수정 사항에 대해 계획 생성
             for mod in parsed_modifications:

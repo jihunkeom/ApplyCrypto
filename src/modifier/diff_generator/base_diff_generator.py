@@ -1,8 +1,9 @@
 import hashlib
+import json
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import tiktoken
 from jinja2 import Template
@@ -12,6 +13,12 @@ from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
 from modifier.llm.llm_provider import LLMProvider
 
 logger = logging.getLogger(__name__)
+
+
+class DiffGeneratorError(Exception):
+    """Diff Generator 관련 오류"""
+
+    pass
 
 
 def render_template(template_str: str, variables: Dict[str, Any]) -> str:
@@ -133,6 +140,105 @@ class BaseDiffGenerator:
 
         return render_template(template_str, batch_variables)
 
+    def _parse_llm_response(
+        self, response: Union[Dict[str, Any], DiffGeneratorOutput]
+    ) -> List[Dict[str, Any]]:
+        """
+        LLM 응답을 파싱하여 수정 정보를 추출합니다.
+
+        Args:
+            response: LLM 응답 (Dictionary or DiffGeneratorOutput)
+
+        Returns:
+            List[Dict[str, Any]]: 수정 정보 리스트
+                - file_path: 파일 경로
+                - unified_diff: Unified Diff 형식의 수정 내용
+
+        Raises:
+            DiffGeneratorError: 파싱 실패 시
+        """
+        try:
+            # 응답에서 content 추출
+            if isinstance(response, DiffGeneratorOutput):
+                content = response.content
+            else:
+                content = response.get("content", "")
+
+            if not content:
+                raise DiffGeneratorError("LLM 응답에 content가 없습니다.")
+
+            # JSON 파싱 시도
+            # content가 JSON 코드 블록으로 감싸져 있을 수 있음
+            content = content.strip()
+            if content.startswith("```"):
+                # 코드 블록 제거
+                lines = content.split("\n")
+                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
+            elif content.startswith("```json"):
+                lines = content.split("\n")
+                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
+
+            # JSON 파싱
+            try:
+                data = json.loads(content)
+            except json.JSONDecodeError:
+                # JSON 파싱 실패 시, modifications 키워드로 찾기 시도
+                if "modifications" in content:
+                    # modifications 부분만 추출
+                    start_idx = content.find('"modifications"')
+                    if start_idx != -1:
+                        # JSON 객체 시작 찾기
+                        brace_start = content.rfind("{", 0, start_idx)
+                        if brace_start != -1:
+                            # JSON 객체 끝 찾기
+                            brace_count = 0
+                            for i in range(brace_start, len(content)):
+                                if content[i] == "{":
+                                    brace_count += 1
+                                elif content[i] == "}":
+                                    brace_count -= 1
+                                    if brace_count == 0:
+                                        json_str = content[brace_start : i + 1]
+                                        data = json.loads(json_str)
+                                        break
+                            else:
+                                raise DiffGeneratorError(
+                                    "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
+                                )
+                        else:
+                            raise DiffGeneratorError(
+                                "JSON 파싱 실패: modifications를 찾을 수 없습니다."
+                            )
+                    else:
+                        raise DiffGeneratorError(
+                            "JSON 파싱 실패: modifications 키를 찾을 수 없습니다."
+                        )
+                else:
+                    raise DiffGeneratorError(
+                        "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
+                    )
+
+            # modifications 추출
+            modifications = data.get("modifications", [])
+            if not modifications:
+                raise DiffGeneratorError("LLM 응답에 modifications가 없습니다.")
+
+            # 검증
+            for mod in modifications:
+                if "file_path" not in mod:
+                    raise DiffGeneratorError("수정 정보에 file_path가 없습니다.")
+                if "reason" not in mod:
+                    raise DiffGeneratorError("수정 정보에 reason가 없습니다.")
+                if "unified_diff" not in mod:
+                    raise DiffGeneratorError("수정 정보에 unified_diff가 없습니다.")
+
+            logger.info(f"{len(modifications)}개 파일 수정 정보를 파싱했습니다.")
+            return modifications
+
+        except Exception as e:
+            # logger.error(f"LLM 응답 파싱 실패: {e}") # generate 에서 호출될 때 잡음 발생 가능
+            raise DiffGeneratorError(f"LLM 응답 파싱 실패: {e}")
+
     def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
         """
         입력 데이터를 바탕으로 Diff를 생성합니다.
@@ -160,6 +266,13 @@ class BaseDiffGenerator:
                 content=response.get("content", ""),
                 tokens_used=response.get("tokens_used", 0),
             )
+
+            # 파싱 시도 (실패 시 무시 - CallChain 등 다른 포맷일 수 있음)
+            try:
+                output.parsed_out = self._parse_llm_response(output)
+            except Exception as e:
+                logger.debug(f"자동 Diff 파싱 실패 (포맷 불일치 가능성): {e}")
+                output.parsed_out = None
 
             # 캐시에 저장
             self._prompt_cache[cache_key] = output

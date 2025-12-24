@@ -8,6 +8,7 @@ from models.modification_context import CodeSnippet
 class DiffGeneratorOutput:
     content: str
     tokens_used: int = 0
+    parsed_out: List[Dict[str, Any]] = None
 
 
 @dataclass

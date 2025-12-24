@@ -5,23 +5,15 @@ Unified Diff 형식을 파싱하고 코드 수정을 적용하는 모듈입니�
 """
 
 import difflib
-import json
 import logging
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Optional, Tuple
 
 from config.config_manager import Configuration
-from models.diff_generator import DiffGeneratorOutput
 
 logger = logging.getLogger("applycrypto.code_patcher")
-
-
-class CodePatcherError(Exception):
-    """Code Patcher 관련 오류"""
-
-    pass
 
 
 class CodePatcher:
@@ -45,105 +37,6 @@ class CodePatcher:
         """
         self.project_root = Path(project_root) if project_root else Path.cwd()
         self.config = config
-
-    def parse_llm_response(
-        self, response: Union[Dict[str, Any], DiffGeneratorOutput]
-    ) -> List[Dict[str, Any]]:
-        """
-        LLM 응답을 파싱하여 수정 정보를 추출합니다.
-
-        Args:
-            response: LLM 응답 (Dictionary or DiffGeneratorOutput)
-
-        Returns:
-            List[Dict[str, Any]]: 수정 정보 리스트
-                - file_path: 파일 경로
-                - unified_diff: Unified Diff 형식의 수정 내용
-
-        Raises:
-            CodePatcherError: 파싱 실패 시
-        """
-        try:
-            # 응답에서 content 추출
-            if isinstance(response, DiffGeneratorOutput):
-                content = response.content
-            else:
-                content = response.get("content", "")
-
-            if not content:
-                raise CodePatcherError("LLM 응답에 content가 없습니다.")
-
-            # JSON 파싱 시도
-            # content가 JSON 코드 블록으로 감싸져 있을 수 있음
-            content = content.strip()
-            if content.startswith("```"):
-                # 코드 블록 제거
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
-            elif content.startswith("```json"):
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
-
-            # JSON 파싱
-            try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                # JSON 파싱 실패 시, modifications 키워드로 찾기 시도
-                if "modifications" in content:
-                    # modifications 부분만 추출
-                    start_idx = content.find('"modifications"')
-                    if start_idx != -1:
-                        # JSON 객체 시작 찾기
-                        brace_start = content.rfind("{", 0, start_idx)
-                        if brace_start != -1:
-                            # JSON 객체 끝 찾기
-                            brace_count = 0
-                            for i in range(brace_start, len(content)):
-                                if content[i] == "{":
-                                    brace_count += 1
-                                elif content[i] == "}":
-                                    brace_count -= 1
-                                    if brace_count == 0:
-                                        json_str = content[brace_start : i + 1]
-                                        data = json.loads(json_str)
-                                        break
-                            else:
-                                raise CodePatcherError(
-                                    "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
-                                )
-                        else:
-                            raise CodePatcherError(
-                                "JSON 파싱 실패: modifications를 찾을 수 없습니다."
-                            )
-                    else:
-                        raise CodePatcherError(
-                            "JSON 파싱 실패: modifications 키를 찾을 수 없습니다."
-                        )
-                else:
-                    raise CodePatcherError(
-                        "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
-                    )
-
-            # modifications 추출
-            modifications = data.get("modifications", [])
-            if not modifications:
-                raise CodePatcherError("LLM 응답에 modifications가 없습니다.")
-
-            # 검증
-            for mod in modifications:
-                if "file_path" not in mod:
-                    raise CodePatcherError("수정 정보에 file_path가 없습니다.")
-                if "reason" not in mod:
-                    raise CodePatcherError("수정 정보에 reason가 없습니다.")
-                if "unified_diff" not in mod:
-                    raise CodePatcherError("수정 정보에 unified_diff가 없습니다.")
-
-            logger.info(f"{len(modifications)}개 파일 수정 정보를 파싱했습니다.")
-            return modifications
-
-        except Exception as e:
-            logger.error(f"LLM 응답 파싱 실패: {e}")
-            raise CodePatcherError(f"LLM 응답 파싱 실패: {e}")
 
     def apply_patch(
         self, file_path: Path, unified_diff: str, dry_run: bool = False
