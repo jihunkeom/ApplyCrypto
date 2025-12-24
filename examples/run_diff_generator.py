@@ -11,6 +11,7 @@ from models.diff_generator import DiffGeneratorInput
 from models.modification_context import CodeSnippet
 from modifier.code_modifier import CodeModifier
 from modifier.code_patcher import CodePatcher
+from persistence.data_persistence_manager import DataPersistenceManager
 
 # Add src to sys.path
 current_dir = Path(__file__).resolve().parent
@@ -86,8 +87,8 @@ def main():
 
     # Initialize CodeModifier to get the correct DiffGenerator
     try:
-        # We pass project_root explicitly
-        modifier = CodeModifier(config=config, project_root=project_root)
+        # We pass project_root from config
+        modifier = CodeModifier(config=config, project_root=Path(config.target_project))
         diff_generator = modifier.diff_generator
         logger.info(f"Initialized DiffGenerator: {type(diff_generator).__name__}")
 
@@ -146,13 +147,20 @@ def main():
         logger.info("Generating diff...")
         diff_out = diff_generator.generate(input_data)
 
-        print("\n" + "=" * 50)
-        print("GENERATED RESPONSE")
-        print("=" * 50)
-        print(f"Tokens Used: {diff_out.tokens_used}")
-        print("-" * 20)
-        print(diff_out.content)
-        print("=" * 50 + "\n")
+        # Prepare log content
+        log_content = []
+        log_content.append("\n" + "=" * 50)
+        log_content.append("GENERATED RESPONSE")
+        log_content.append("=" * 50)
+        log_content.append(f"Tokens Used: {diff_out.tokens_used}")
+        log_content.append("-" * 20)
+
+        # Handle \n in text for pretty printing
+        content_str = diff_out.content
+        if content_str:
+            content_str = content_str.replace("\\n", "\n")
+        log_content.append(content_str)
+        log_content.append("=" * 50 + "\n")
 
         # Verify result
         logger.info("Verifying result with CodePatcher...")
@@ -161,11 +169,11 @@ def main():
 
         # Check if right
         if parsed:
-            print("Parsed Modifications:")
+            log_content.append("Parsed Modifications:")
             for mod in parsed:
-                print(f"File: {mod.get('file_path')}")
-                print(f"Status: {mod.get('status', 'Unknown')}")
-                # print(f"Diff:\n{mod.get('unified_diff')}")
+                log_content.append(f"File: {mod.get('file_path')}")
+                log_content.append(f"Status: {mod.get('status', 'Unknown')}")
+                # log_content.append(f"Diff:\n{mod.get('unified_diff')}")
 
             # Basic validation
             if len(parsed) > 0:
@@ -176,6 +184,20 @@ def main():
             logger.warning(
                 "FAILURE: No modifications parsed from response. The response might be malformed or empty."
             )
+
+        # Save to log file
+        try:
+            target_project_path = Path(config.target_project)
+            persistence = DataPersistenceManager(
+                target_project=target_project_path,
+                output_dir=target_project_path / ".applycrypto",
+            )
+            persistence.save_text_file("\n".join(log_content), "diff_generator_log.txt")
+            logger.info(
+                f"Log file generated at {target_project_path / '.applycrypto/diff_generator_log.txt'}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate log file: {e}")
 
     except Exception as e:
         logger.error(f"Error during execution: {e}")

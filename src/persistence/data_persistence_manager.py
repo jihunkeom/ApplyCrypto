@@ -176,6 +176,45 @@ class DataPersistenceManager:
         except Exception as e:
             raise PersistenceError(f"파일 저장 중 예상치 못한 오류: {e}")
 
+    def save_text_file(
+        self, content: str, filename: str, subdirectory: Optional[str] = None
+    ) -> Path:
+        """
+        문자열 데이터를 텍스트 파일로 저장
+
+        Args:
+            content: 저장할 문자열
+            filename: 파일명 (확장자 포함)
+            subdirectory: 하위 디렉터리 (선택적)
+
+        Returns:
+            Path: 저장된 파일 경로
+
+        Raises:
+            PersistenceError: 파일 저장 실패 시
+        """
+        try:
+            # 저장 디렉터리 결정
+            save_dir = self.output_dir
+            if subdirectory:
+                save_dir = self.output_dir / subdirectory
+                save_dir.mkdir(parents=True, exist_ok=True)
+
+            # 파일 경로
+            file_path = save_dir / filename
+
+            # 파일 저장
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(content)
+
+            self.logger.info(f"텍스트 파일 저장 완료: {file_path}")
+            return file_path
+
+        except (OSError, PermissionError) as e:
+            raise PersistenceError(f"파일 저장 실패: {file_path} - {e}")
+        except Exception as e:
+            raise PersistenceError(f"파일 저장 중 예상치 못한 오류: {e}")
+
     def load_from_file(
         self,
         filename: str,
