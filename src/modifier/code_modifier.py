@@ -4,8 +4,6 @@ Code Modifier 메인 모듈
 LLM을 활용하여 소스 코드에 암호화/복호화 코드를 자동으로 적용하는 메인 클래스입니다.
 """
 
-import importlib
-import inspect
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -18,7 +16,7 @@ from models.table_access_info import TableAccessInfo
 
 from .batch_processor import BatchProcessor
 from .code_patcher import CodePatcher
-from .diff_generator import BaseDiffGenerator
+from .diff_generator import DiffGeneratorFactory
 from .error_handler import ErrorHandler
 from .llm.llm_factory import create_llm_provider
 from .llm.llm_provider import LLMProvider
@@ -62,7 +60,9 @@ class CodeModifier:
             llm_provider_name = config.llm_provider
             self.llm_provider = create_llm_provider(provider_name=llm_provider_name)
 
-        self.diff_generator = self._get_diff_generator()
+        self.diff_generator = DiffGeneratorFactory.create(
+            config=self.config, llm_provider=self.llm_provider
+        )
         self.modification_context_generator = (
             ModificationContextGeneratorFactory.create(
                 config=self.config,
@@ -102,41 +102,6 @@ class CodeModifier:
             return os.getenv("OPENAI_API_KEY")
 
         return None
-
-    def _get_diff_generator(self) -> BaseDiffGenerator:
-        """
-        DiffGenerator 인스턴스를 가져옵니다.
-
-        Returns:
-            BaseDiffGenerator: DiffGenerator 인스턴스
-        """
-        diff_type = self.config.diff_gen_type
-
-        try:
-            # 동적 임포트 경로 생성
-            # 예: .diff_generator.mybatis_service.mybatis_service_diff_generator
-            module_path = f".diff_generator.{diff_type}.{diff_type}_diff_generator"
-
-            # 현재 패키지를 기준으로 모듈 임포트
-            module = importlib.import_module(module_path, package=__package__)
-
-            # 모듈 내에서 BaseDiffGenerator를 상속받는 클래스 탐색
-            for name, obj in inspect.getmembers(module, inspect.isclass):
-                if (
-                    issubclass(obj, BaseDiffGenerator)
-                    and obj is not BaseDiffGenerator
-                    and obj.__module__ == module.__name__
-                ):
-                    return obj(llm_provider=self.llm_provider, config=self.config)
-
-            raise ValueError(f"No suitable DiffGenerator class found in {module_path}")
-
-        except ImportError as e:
-            logger.error(f"Failed to import generator module for {diff_type}: {e}")
-            raise ValueError(f"Invalid diff_type or module not found: {diff_type}")
-        except Exception as e:
-            logger.error(f"Error loading generator for {diff_type}: {e}")
-            raise
 
     def modify_sources(
         self, table_access_info: TableAccessInfo, dry_run: bool = False
