@@ -29,28 +29,28 @@ class DiffGeneratorFactory:
         diff_type = config.diff_gen_type
 
         if diff_type == "mybatis_service":
-            from .mybatis_service.mybatis_service_diff_generator import \
-                MyBatisServiceDiffGenerator
+            from .mybatis_service.mybatis_service_diff_generator import (
+                MyBatisServiceDiffGenerator,
+            )
 
             return MyBatisServiceDiffGenerator(llm_provider=llm_provider, config=config)
 
         elif diff_type == "mybatis_dao":
-            from .mybatis_dao.mybatis_dao_diff_generator import \
-                MyBatisDaoDiffGenerator
+            from .mybatis_dao.mybatis_dao_diff_generator import MyBatisDaoDiffGenerator
 
             return MyBatisDaoDiffGenerator(llm_provider=llm_provider, config=config)
 
         elif diff_type == "mybatis_typehandler":
-            from .mybatis_typehandler.mybatis_typehandler_diff_generator import \
-                MyBatisTypeHandlerDiffGenerator
+            from .mybatis_typehandler.mybatis_typehandler_diff_generator import (
+                MyBatisTypeHandlerDiffGenerator,
+            )
 
             return MyBatisTypeHandlerDiffGenerator(
                 llm_provider=llm_provider, config=config
             )
 
         elif diff_type == "call_chain":
-            from .call_chain.call_chain_diff_generator import \
-                CallChainDiffGenerator
+            from .call_chain.call_chain_diff_generator import CallChainDiffGenerator
 
             return CallChainDiffGenerator(llm_provider=llm_provider, config=config)
 

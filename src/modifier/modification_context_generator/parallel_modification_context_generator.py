@@ -4,8 +4,9 @@ from typing import List
 
 from models.modification_context import CodeSnippet, ModificationContext
 from models.table_access_info import TableAccessInfo
-from modifier.modification_context_generator.base_modification_context_generator import \
-    BaseModificationContextGenerator
+from modifier.modification_context_generator.base_modification_context_generator import (
+    BaseModificationContextGenerator,
+)
 
 logger = logging.getLogger("applycrypto.modification_context_generator")
 

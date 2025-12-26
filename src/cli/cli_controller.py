@@ -38,8 +38,10 @@ from models.source_file import SourceFile
 from models.table_access_info import TableAccessInfo
 from modifier.code_modifier import CodeModifier
 from persistence.cache_manager import CacheManager
-from persistence.data_persistence_manager import (DataPersistenceManager,
-                                                  PersistenceError)
+from persistence.data_persistence_manager import (
+    DataPersistenceManager,
+    PersistenceError,
+)
 
 
 class CLIController:
@@ -459,8 +461,7 @@ class CLIController:
             sql_extraction_results = []
             if args.cached:
                 try:
-                    from models.sql_extraction_output import \
-                        SQLExtractionOutput
+                    from models.sql_extraction_output import SQLExtractionOutput
 
                     sql_extraction_data = persistence_manager.load_from_file(
                         "sql_extraction_results.json", SQLExtractionOutput

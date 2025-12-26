@@ -1,10 +1,10 @@
 from config.config_manager import Configuration
 from modifier.diff_generator.base_diff_generator import BaseDiffGenerator
 
-from .base_modification_context_generator import \
-    BaseModificationContextGenerator
-from .parallel_modification_context_generator import \
-    ParallelModificationContextGenerator
+from .base_modification_context_generator import BaseModificationContextGenerator
+from .parallel_modification_context_generator import (
+    ParallelModificationContextGenerator,
+)
 
 
 class ModificationContextGeneratorFactory:

@@ -14,8 +14,12 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from analyzer.db_access_analyzer import DBAccessAnalyzer
-from analyzer.sql_parsing_strategy import (JDBCStrategy, JPAStrategy,
-                                           MyBatisStrategy, create_strategy)
+from analyzer.sql_parsing_strategy import (
+    JDBCStrategy,
+    JPAStrategy,
+    MyBatisStrategy,
+    create_strategy,
+)
 from config.config_manager import ConfigurationManager
 from models.source_file import SourceFile
 from persistence.cache_manager import CacheManager

@@ -13,8 +13,7 @@ import pytest
 
 # 테스트 전에 모듈 import
 try:
-    from modifier.llm.watsonx_provider import (WATSONX_AVAILABLE,
-                                               WatsonXAIProvider)
+    from modifier.llm.watsonx_provider import WATSONX_AVAILABLE, WatsonXAIProvider
 except ImportError:
     WatsonXAIProvider = None
     WATSONX_AVAILABLE = False

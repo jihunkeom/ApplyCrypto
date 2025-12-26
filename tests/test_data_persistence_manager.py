@@ -22,8 +22,10 @@ from models.method import Method, Parameter
 from models.modification_record import ModificationRecord
 from models.source_file import SourceFile
 from models.table_access_info import TableAccessInfo
-from persistence.data_persistence_manager import (DataPersistenceManager,
-                                                  PersistenceError)
+from persistence.data_persistence_manager import (
+    DataPersistenceManager,
+    PersistenceError,
+)
 
 
 @pytest.fixture
