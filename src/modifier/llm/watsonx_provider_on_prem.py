@@ -114,7 +114,7 @@ class WatsonXAIOnPremiseProvider(LLMProvider):
                 "Authorization": f"Bearer {iam_token}",
             }
             body = {
-                "messages": [{"role": "user", "text": prompt}],
+                "messages": [{"role": "user", "content": [{"type":"text","text":prompt}]}],
                 "project_id": self.project_id,
                 "model_id": self.model_id,
                 "frequency_penalty": 0,

@@ -99,6 +99,8 @@ class WatsonXAIProvider(LLMProvider):
                 - model: 사용된 모델명
         """
         try:
+            with open("prompt_temp", "w", encoding="utf-8") as f:
+                f.write(prompt)
             # 메시지 형식으로 변환
             messages = [{"role": "user", "content": prompt}]
 

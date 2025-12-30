@@ -188,7 +188,14 @@ class DBAccessAnalyzer:
                 sql_queries.append(sql_query_info)
 
                 # sql query에서 사용되는 클래스 파일 경로 정보 추출 (sql_wrapping_type에 따라 다름 )
-                method_string, layer_files, all_added_files = self.sql_extractor.get_class_files_from_sql_query(sql_query_info)
+                method_string, query_layer_files, query_added_files = self.sql_extractor.get_class_files_from_sql_query(sql_query_info)
+
+                if query_layer_files:
+                    for layer, files in query_layer_files.items():
+                        layer_files[layer].update(files)
+                    
+                if query_added_files:
+                    all_added_files.update(query_added_files)
 
                 if (
                     method_string

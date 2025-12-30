@@ -9,7 +9,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 from config.config_manager import Configuration
 from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
@@ -28,6 +28,21 @@ logger = logging.getLogger(__name__)
 class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
     """Controller/Service Code 생성기"""
 
+    def create_file_mapping(self, input_data: DiffGeneratorInput) -> Dict[str, str]:
+        """
+        파일명 -> 절대 경로 매핑을 생성합니다.
+
+        Args:
+            input_data: Diff 생성 입력
+
+        Returns:
+            Dict[str, str]: 파일명 -> 절대 경로 매핑
+        """
+        return {
+            Path(snippet.path).name: snippet.path
+            for snippet in input_data.code_snippets
+        }
+
     def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
         """
         입력 데이터를 바탕으로 Code를 생성합니다.
@@ -40,12 +55,16 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             DiffGeneratorOutput: LLM 응답 (Code 포함)
         """
         prompt = self.create_prompt(input_data)
+        file_mapping = self.create_file_mapping(input_data)
 
         # 캐시 확인
         cache_key = self._get_cache_key(prompt)
         if cache_key in self._prompt_cache:
             logger.debug(f"캐시에서 응답을 가져왔습니다: {cache_key[:50]}...")
-            return self._prompt_cache[cache_key]
+            cached_output = self._prompt_cache[cache_key]
+            # 캐시된 응답에도 file_mapping 추가
+            cached_output.file_mapping = file_mapping
+            return cached_output
 
         # LLM 호출
         try:
@@ -55,6 +74,7 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             output = DiffGeneratorOutput(
                 content=response.get("content", ""),
                 tokens_used=response.get("tokens_used", 0),
+                file_mapping=file_mapping,
             )
 
             # 파싱 시도 (실패 시 무시 - CallChain 등 다른 포맷일 수 있음)

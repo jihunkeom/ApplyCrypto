@@ -107,20 +107,22 @@ Please make sure that the rest of the codes must remain unchanged except for the
 
 ### 6. Output Format Requirements
 **Output Format**
-The response must be strictly returned in a JSON array with this exact structure as like below.
-{
-  "modifications": [
-    {
-      "file_path": "Absolute path of the file (e.g., /Users/jihun.kim/Documents/src/book-ssm/src/com/mybatis/dao/EmployeeMapper.java)",
-      "reason": "Briefly explain the reason for the modification or why modification is not required",
-      "unified_diff": "If the source is modified, this should contain FULL java source content with the changes you made. Note that It's not just diff content. If it not modifed, this should be empty string."
-    }
-  ]
-} 
+For EACH input source file, you MUST output in the following format using delimiters:
+
+```
+======FILE======
+{filename only, e.g., EmployeeService.java}
+======REASON======
+{Brief explanation of the modification or why modification is not required}
+======MODIFIED_CODE======
+{If modified: the FULL Java source code with your changes applied}
+{If not modified: leave this section empty}
+======END======
+```
+
 The 'modification' should keep the same number of input source files in its list.
 Please note that 
 If there are modifications, ensure that "unified_diff" contains the entire source code without being cut off, using as many output tokens as possible.
-Please make sure that you created correct JSON format before you returned the output.
 
 **Critical import point**
 You must generate "modification" key. This can not be omitted.

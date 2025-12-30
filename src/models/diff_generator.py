@@ -1,5 +1,5 @@
-from dataclasses import dataclass
-from typing import Any, Dict, List
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from models.modification_context import CodeSnippet
 
@@ -9,6 +9,7 @@ class DiffGeneratorOutput:
     content: str
     tokens_used: int = 0
     parsed_out: List[Dict[str, Any]] = None
+    file_mapping: Optional[Dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass

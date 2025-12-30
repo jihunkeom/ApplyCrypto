@@ -124,16 +124,18 @@ class BaseCodeGenerator(ABC):
         Returns:
             str: 생성된 프롬프트
         """
-        # 배치 프롬프트 생성 (절대 경로 포함)
+        source_files_str = "\n\n".join(
+            [
+                f"=== File: {Path(snippet.path).name} ===\n{snippet.content}"
+                for snippet in input_data.code_snippets
+            ]
+        )
+
+        # 배치 프롬프트 생성
         batch_variables = {
             "table_info": input_data.table_info,
             "layer_name": input_data.layer_name,
-            "source_files": "\n\n".join(
-                [
-                    f"=== File Path (Absolute): {snippet.path} ===\n{snippet.content}"
-                    for snippet in input_data.code_snippets
-                ]
-            ),
+            "source_files": source_files_str,
             "file_count": len(input_data.code_snippets),
             **(input_data.extra_variables or {}),
         }
@@ -158,89 +160,129 @@ class BaseCodeGenerator(ABC):
                 - unified_diff: Unified Diff 형식의 수정 내용
 
         Raises:
-            CodeGeneratorError: 파싱 실패 시
+            DiffGeneratorError: 파싱 실패 시
         """
         try:
-            # 응답에서 content 추출
             if isinstance(response, DiffGeneratorOutput):
                 content = response.content
+                file_mapping = response.file_mapping or {}
             else:
                 content = response.get("content", "")
+                file_mapping = response.get("file_mapping", {})
 
             if not content:
-                raise CodeGeneratorError("LLM 응답에 content가 없습니다.")
-
-            # JSON 파싱 시도
-            # content가 JSON 코드 블록으로 감싸져 있을 수 있음
+                raise Exception("LLM응답에 content가 없습니다.")
+            
             content = content.strip()
-            if content.startswith("```"):
-                # 코드 블록 제거
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
-            elif content.startswith("```json"):
-                lines = content.split("\n")
-                content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
 
-            # JSON 파싱
+            # 구분자 기반 형식 시도
+            if "=====FILE=====" in content:
+                return self._parse_delimited_format(content, file_mapping)
+             
+        except Exception as e:
+            logger.error(f"LLM 응답 파싱 실패: {e}")
+            raise Exception(f"LLM 응답 파싱 실패: {e}")
+
+    def _parse_delimited_format(self, content:str, file_mapping: Dict[str, str]) -> List[Dict[str, Any]]:
+        """
+        구분자 기반 형식의 LLM 응답을 파싱합니다.
+
+        형식:
+            ======FILE======
+            EmployeeService.java
+            ======REASON======
+            Added encryption for name field
+            ======MODIFIED_CODE======
+            package com.example;
+            ...
+            ======END======
+
+        Args:
+            content: LLM 응답 내용
+            file_mapping: 파일명 -> 절대 경로 매핑
+
+        Returns:
+            List[Dict[str, Any]]: 수정 정보 리스트
+        """
+        modifications = []
+
+        # ======END====== 기준으로 블록 분리
+        blocks = content.split("======END======")
+
+        for block in blocks:
+            block = block.strip()
+            if not block or "======FILE======" not in block:
+                continue
+
             try:
-                data = json.loads(content)
-            except json.JSONDecodeError:
-                # JSON 파싱 실패 시, modifications 키워드로 찾기 시도
-                if "modifications" in content:
-                    # modifications 부분만 추출
-                    start_idx = content.find('"modifications"')
-                    if start_idx != -1:
-                        # JSON 객체 시작 찾기
-                        brace_start = content.rfind("{", 0, start_idx)
-                        if brace_start != -1:
-                            # JSON 객체 끝 찾기
-                            brace_count = 0
-                            for i in range(brace_start, len(content)):
-                                if content[i] == "{":
-                                    brace_count += 1
-                                elif content[i] == "}":
-                                    brace_count -= 1
-                                    if brace_count == 0:
-                                        json_str = content[brace_start : i + 1]
-                                        data = json.loads(json_str)
-                                        break
-                            else:
-                                raise CodeGeneratorError(
-                                    "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
-                                )
-                        else:
-                            raise CodeGeneratorError(
-                                "JSON 파싱 실패: modifications를 찾을 수 없습니다."
-                            )
-                    else:
-                        raise CodeGeneratorError(
-                            "JSON 파싱 실패: modifications 키를 찾을 수 없습니다."
-                        )
+                # 각 섹션 추출
+                file_name = self._extract_section(
+                    block, "======FILE======", "======REASON======"
+                )
+                reason = self._extract_section(
+                    block, "======REASON======", "======MODIFIED_CODE======"
+                )
+                modified_code = self._extract_section(
+                    block, "======MODIFIED_CODE======", "======END======"
+                )
+
+                # 파일명 정리
+                file_name = file_name.strip()
+
+                # 파일명을 절대 경로로 변환
+                if file_name in file_mapping:
+                    file_path = file_mapping[file_name]
                 else:
-                    raise CodeGeneratorError(
-                        "JSON 파싱 실패: 올바른 JSON 형식이 아닙니다."
+                    # 매핑에 없으면 파일명 그대로 사용 (절대 경로일 수도 있음)
+                    file_path = file_name
+                    logger.warning(
+                        f"파일 매핑에서 찾을 수 없음: {file_name}. 원본 값 사용."
                     )
 
-            # modifications 추출
-            modifications = data.get("modifications", [])
-            if not modifications:
-                raise CodeGeneratorError("LLM 응답에 modifications가 없습니다.")
+                modifications.append({
+                    "file_path": file_path,
+                    "reason": reason.strip(),
+                    "unified_diff": modified_code.strip(),
+                })
 
-            # 검증
-            for mod in modifications:
-                if "file_path" not in mod:
-                    raise CodeGeneratorError("수정 정보에 file_path가 없습니다.")
-                if "reason" not in mod:
-                    raise CodeGeneratorError("수정 정보에 reason가 없습니다.")
-                if "unified_diff" not in mod:
-                    raise CodeGeneratorError("수정 정보에 unified_diff가 없습니다.")
+            except Exception as e:
+                logger.warning(f"블록 파싱 중 오류 (건너뜀): {e}")
+                continue
 
-            logger.info(f"{len(modifications)}개 파일 수정 정보를 파싱했습니다.")
-            return modifications
+        if not modifications:
+            raise Exception(
+                "구분자 형식 파싱 실패: 유효한 수정 블록을 찾을 수 없습니다."
+            )
 
-        except Exception as e:
-            # logger.error(f"LLM 응답 파싱 실패: {e}") # generate 에서 호출될 때 잡음 발생 가능
-            raise CodeGeneratorError(f"LLM 응답 파싱 실패: {e}")
+        logger.info(f"{len(modifications)}개 파일 수정 정보를 파싱했습니다 (구분자 형식).")
+        return modifications
+
+    def _extract_section(
+        self, block: str, start_delimiter: str, end_delimiter: str
+    ) -> str:
+        """
+        블록에서 특정 섹션을 추출합니다.
+
+        Args:
+            block: 전체 블록 문자열
+            start_delimiter: 시작 구분자
+            end_delimiter: 종료 구분자
+
+        Returns:
+            str: 추출된 섹션 내용
+        """
+        start_idx = block.find(start_delimiter)
+        if start_idx == -1:
+            return ""
+
+        start_idx += len(start_delimiter)
+
+        # end_delimiter가 블록에 없으면 끝까지
+        end_idx = block.find(end_delimiter, start_idx)
+        if end_idx == -1:
+            return block[start_idx:].strip()
+
+        return block[start_idx:end_idx].strip()
 
     @abstractmethod
     def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
