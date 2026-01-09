@@ -170,7 +170,7 @@ If no modifications are needed, return the original XML as-is with a comment at 
 
         # 컴포넌트 초기화
         self.error_handler = ErrorHandler(max_retries=config.max_retries)
-        self.result_tracker = ResultTracker()
+        self.result_tracker = ResultTracker(self.project_root)
         self.persistence_manager = DataPersistenceManager(self.project_root)
 
         # Type Handler 기본 설정

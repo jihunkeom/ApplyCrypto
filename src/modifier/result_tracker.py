@@ -22,16 +22,14 @@ class ResultTracker:
     수정 이력을 저장하고 통계를 계산합니다.
     """
 
-    def __init__(self, output_dir: Optional[Path] = None):
+    def __init__(self, target_project: Path):
         """
         ResultTracker 초기화
 
         Args:
-            output_dir: 결과 저장 디렉토리 (선택적)
+            target_project: 대상 프로젝트 루트 경로
         """
-        self.output_dir = (
-            Path(output_dir) if output_dir else Path.cwd() / ".applycrypto" / "results"
-        )
+        self.output_dir = target_project / ".applycrypto" / "results"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         # 통계 정보

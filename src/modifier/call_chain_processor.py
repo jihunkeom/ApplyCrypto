@@ -80,7 +80,7 @@ class CallChainProcessor:
 
         # 컴포넌트 초기화
         self.error_handler = ErrorHandler(max_retries=config.max_retries)
-        self.result_tracker = ResultTracker()
+        self.result_tracker = ResultTracker(self.project_root)
 
         # 처리 완료된 파일 조합 추적 (단일 실행 내에서만)
         self.processed_combinations: Set[FrozenSet[str]] = set()

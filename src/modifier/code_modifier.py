@@ -74,7 +74,7 @@ class CodeModifier:
             project_root=self.target_project, config=self.config
         )
         self.error_handler = ErrorHandler(max_retries=config.max_retries)
-        self.result_tracker = ResultTracker()
+        self.result_tracker = ResultTracker(self.target_project)
 
         logger.info(
             f"CodeModifier 초기화 완료: {self.llm_provider.get_provider_name()}"
