@@ -70,6 +70,8 @@ class Method:
     annotations: List[str] = field(default_factory=list)
     exceptions: List[str] = field(default_factory=list)
     method_calls: List[str] = field(default_factory=list)
+    line_number: int = 0
+    end_line_number: int = 0
 
     def to_dict(self) -> dict:
         """딕셔너리 형태로 변환"""
@@ -92,6 +94,8 @@ class Method:
             "annotations": self.annotations,
             "exceptions": self.exceptions,
             "method_calls": self.method_calls,
+            "line_number": self.line_number,
+            "end_line_number": self.end_line_number,
         }
 
     @classmethod
@@ -121,4 +125,6 @@ class Method:
             annotations=data.get("annotations", []),
             exceptions=data.get("exceptions", []),
             method_calls=data.get("method_calls", []),
+            line_number=data.get("line_number", 0),
+            end_line_number=data.get("end_line_number", 0),
         )

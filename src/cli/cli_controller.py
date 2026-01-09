@@ -1154,13 +1154,23 @@ class CLIController:
         method_sig = tree.get("method_signature", "")
         layer = tree.get("layer", "Unknown")
         is_circular = tree.get("is_circular", False)
+        line_number = tree.get("line_number", 0)
+        end_line_number = tree.get("end_line_number", 0)
 
         if method_sig:
             prefix = "   " * indent if indent > 0 else ""
             marker = "└─ " if is_last else "├─ "
             circular_marker = " (recursive/circular)" if is_circular else ""
             highlight = " >>> " if target_method in method_sig else ""
-            self.logger.info(f"{prefix}{marker}{method_sig} [{layer}]{highlight}{circular_marker}")
+            
+            line_info = ""
+            if line_number > 0:
+                if end_line_number > 0:
+                    line_info = f" :{line_number}-{end_line_number}"
+                else:
+                    line_info = f" :{line_number}"
+            
+            self.logger.info(f"{prefix}{marker}{method_sig} [{layer}]{line_info}{highlight}{circular_marker}")
         # 자식 노드 출력
         children = tree.get("children", [])
         for i, child in enumerate(children):
