@@ -29,3 +29,5 @@ ibm-watsonx-ai>=1.0.0  # WatsonX.AI 사용 시
 anthropic>=0.18.0  # Claude AI 사용 시
 
 
+# UI
+streamlit>=1.52.2

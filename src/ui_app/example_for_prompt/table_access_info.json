@@ -1,0 +1,115 @@
+[
+  {
+    "table_name": "tb_employee",
+    "columns": [
+      {
+        "name": "day_of_birth",
+        "new_column": false
+      },
+      {
+        "name": "jumin_number",
+        "new_column": false
+      },
+      {
+        "name": "last_name",
+        "new_column": false
+      },
+      {
+        "name": "sex",
+        "new_column": false
+      }
+    ],
+    "access_files": [
+      "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\beans\\Employee.java",
+      "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\controller\\EmpController.java",
+      "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\controller\\EmployeeController.java",
+      "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\dao\\EmployeeMapper.java",
+      "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\service\\EmployeeService.java"
+    ],
+    "query_type": "SELECT",
+    "sql_query": "select e.id id,e.last_name last_name,e.sex sex, e.email email, e.day_of_birth day_of_birth, e.jumin_number jumin_number,\n e.dept_id d_id,d.id did,d.dept_name dept_name from\n tb_employee e,tb_department d where e.dept_id = d.id",
+    "layer": "Repository",
+    "sql_queries": [
+      {
+        "id": "getEmps",
+        "query_type": "SELECT",
+        "sql": "select e.id id,e.last_name last_name,e.sex sex, e.email email, e.day_of_birth day_of_birth, e.jumin_number jumin_number,\n e.dept_id d_id,d.id did,d.dept_name dept_name from\n tb_employee e,tb_department d where e.dept_id = d.id",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": null,
+          "result_type": "com.mybatis.beans.Employee",
+          "result_map": "MyDifEmp"
+        }
+      },
+      {
+        "id": "query",
+        "query_type": "SELECT",
+        "sql": "select e.id id,e.last_name last_name,e.sex sex, e.email email, e.day_of_birth day_of_birth, e.jumin_number jumin_number,\n e.dept_id d_id,d.id did,d.dept_name dept_name from\n tb_employee e left join tb_department d on  e.dept_id = d.id  where CONCAT(e.id, last_name, sex, email, e.day_of_birth, e.jumin_number, e.dept_id, d.id, d.dept_name)  like #{condition}",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": null,
+          "result_type": "com.mybatis.beans.Employee",
+          "result_map": "conditionEmp"
+        }
+      },
+      {
+        "id": "getEmpsByPage",
+        "query_type": "SELECT",
+        "sql": "select e.id id,e.last_name last_name,e.sex sex, e.email email, e.day_of_birth day_of_birth, e.jumin_number jumin_number,\n e.dept_id d_id,d.id did,d.dept_name dept_name from\n tb_employee e,tb_department d where e.dept_id = d.id limit #{param1} , #{param2}",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": null,
+          "result_type": "com.mybatis.beans.Employee",
+          "result_map": "pageEmp"
+        }
+      },
+      {
+        "id": "getEmpById",
+        "query_type": "SELECT",
+        "sql": "select id, last_name lastName, sex, email, day_of_birth dayOfBirth, jumin_number juminNumber  from tb_employee where id = #{id}",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": null,
+          "result_type": "com.mybatis.beans.Employee",
+          "result_map": null
+        }
+      },
+      {
+        "id": "addEmp",
+        "query_type": "INSERT",
+        "sql": "insert into tb_employee(last_name,email,sex,day_of_birth,jumin_number,dept_id) values(#{lastName},#{email},#{sex},#{dayOfBirth},#{juminNumber},#{dept.id})",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": "com.mybatis.beans.Employee",
+          "result_type": null,
+          "result_map": null
+        }
+      },
+      {
+        "id": "updateEmp",
+        "query_type": "UPDATE",
+        "sql": "update tb_employee set last_name=#{lastName},email=#{email},sex=#{sex},day_of_birth=#{dayOfBirth},jumin_number=#{juminNumber},dept_id=#{dept.id} where id=#{id}",
+        "strategy_specific": {
+          "namespace": "com.mybatis.dao.EmployeeMapper",
+          "parameter_type": null,
+          "result_type": null,
+          "result_map": null
+        }
+      }
+    ],
+    "layer_files": {
+      "Repository": [
+        "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\beans\\Employee.java",
+        "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\dao\\EmployeeMapper.java"
+      ],
+      "service": [
+        "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\service\\EmployeeService.java"
+      ],
+      "controller": [
+        "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\controller\\EmpController.java",
+        "C:\\Users\\hypot\\Works\\book-ssm\\src\\com\\mybatis\\controller\\EmployeeController.java"
+      ]
+    },
+    "modified_files": []
+  }
+]
