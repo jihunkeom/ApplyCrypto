@@ -5,13 +5,13 @@ from typing import List, Dict
 from pathlib import Path
 from collections import defaultdict
 
-from modifier.context_generator.base_context_generator import ContextGenerator
+from modifier.context_generator.base_context_generator import BaseContextGenerator
 from models.modification_context import ModificationContext
 from models.table_access_info import TableAccessInfo
 
 logger = logging.getLogger("applycrypto.context_generator")
 
-class MybatisContextGenerator(ContextGenerator):
+class MybatisContextGenerator(BaseContextGenerator):
     """
     Mybatis Context Generator
 

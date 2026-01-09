@@ -1,10 +1,11 @@
 import json
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import List
 
 from config.config_manager import Configuration
-from models.diff_generator import DiffGeneratorInput
+from models.code_generator import CodeGeneratorInput
 from models.modification_context import CodeSnippet, ModificationContext
 from models.table_access_info import TableAccessInfo
 from modifier.code_generator.base_code_generator import BaseCodeGenerator
@@ -12,24 +13,22 @@ from modifier.code_generator.base_code_generator import BaseCodeGenerator
 logger = logging.getLogger("applycrypto.context_generator")
 
 
-class ContextGenerator:
+class BaseContextGenerator(ABC):
     """
-    Context Generator
-
-    Generates batches of ModificationContext from TableAccessInfo,
-    handling file reading and token limits.
+    Base Context Generator
     """
 
     def __init__(self, config: Configuration, code_generator: BaseCodeGenerator):
         self._config = config
         self._code_generator = code_generator
 
+    @abstractmethod
     def generate(
         self,
         table_access_info: TableAccessInfo,
     ) -> List[ModificationContext]:
         """
-        Generates modification contexts. Failed files are logged.
+        Generates modification contexts.
 
         Args:
             table_access_info: Table access information containing file paths.
@@ -37,32 +36,7 @@ class ContextGenerator:
         Returns:
             List[ModificationContext]: The generated batches of contexts.
         """
-        all_batches: List[ModificationContext] = []
-        project_root = Path(self._config.target_project)
-
-        # Layer-wise file grouping
-        layer_files = table_access_info.layer_files
-
-        for layer_name, file_paths in layer_files.items():
-            if not file_paths:
-                continue
-
-            logger.info(
-                f"Preparing plan generation for layer '{layer_name}': {len(file_paths)} files"
-            )
-
-            code_snippets = self._read_files(file_paths, project_root)
-
-            # Create batches considering token limits
-            modification_context_batches = self.create_batches(
-                code_snippets=code_snippets,
-                table_access_info=table_access_info,
-                layer=layer_name,
-            )
-
-            all_batches.extend(modification_context_batches)
-
-        return all_batches
+        raise NotImplementedError
 
     def create_batches(
         self,
@@ -95,7 +69,7 @@ class ContextGenerator:
         formatted_table_info = json.dumps(table_info, indent=2, ensure_ascii=False)
         max_tokens = self._config.max_tokens_per_batch
 
-        input_empty_data = DiffGeneratorInput(
+        input_empty_data = CodeGeneratorInput(
             code_snippets=[], table_info=formatted_table_info, layer_name=layer
         )
 

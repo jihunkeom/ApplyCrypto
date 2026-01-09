@@ -1,5 +1,5 @@
-from .base_context_generator import ContextGenerator
-from .context_generator_factory import ContextGeneratorFactory
-from .mybatis_context_generator import MybatisContextGenerator
+from modifier.context_generator.base_context_generator import BaseContextGenerator
+from modifier.context_generator.per_layer_context_generator import PerLayerContextGenerator
+from modifier.context_generator.context_generator_factory import ContextGeneratorFactory
 
-__all__ = ["ContextGenerator", "ContextGeneratorFactory", "MybatisContextGenerator"]
+__all__ = ["BaseContextGenerator", "PerLayerContextGenerator", "ContextGeneratorFactory"]

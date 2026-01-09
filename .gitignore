@@ -75,3 +75,4 @@ config_*.json
 .applycrypto/*
 
 change_*.diff
+migration_log.txt

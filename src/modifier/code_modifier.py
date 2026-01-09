@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config.config_manager import Configuration
-from models.diff_generator import DiffGeneratorInput
+from models.code_generator import CodeGeneratorInput
 from models.modification_context import ModificationContext
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo

@@ -10,7 +10,7 @@ import tiktoken
 from jinja2 import Template
 
 from config.config_manager import Configuration
-from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
+from models.code_generator import CodeGeneratorInput, CodeGeneratorOutput
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
 from modifier.llm.llm_provider import LLMProvider
@@ -114,7 +114,7 @@ class BaseCodeGenerator(ABC):
         # 간단한 추정: 대략 1 토큰 = 4 문자
         return len(text) // 4
 
-    def create_prompt(self, input_data: DiffGeneratorInput) -> str:
+    def create_prompt(self, input_data: CodeGeneratorInput) -> str:
         """
         입력 데이터를 사용하여 프롬프트를 생성합니다.
 
@@ -146,7 +146,7 @@ class BaseCodeGenerator(ABC):
         return render_template(template_str, batch_variables)
 
     def parse_llm_response(
-        self, response: Union[Dict[str, Any], DiffGeneratorOutput]
+        self, response: Union[Dict[str, Any], CodeGeneratorOutput]
     ) -> List[Dict[str, Any]]:
         """
         LLM 응답을 파싱하여 수정 정보를 추출합니다.
@@ -163,7 +163,7 @@ class BaseCodeGenerator(ABC):
             DiffGeneratorError: 파싱 실패 시
         """
         try:
-            if isinstance(response, DiffGeneratorOutput):
+            if isinstance(response, CodeGeneratorOutput):
                 content = response.content
                 file_mapping = response.file_mapping or {}
             else:
@@ -285,7 +285,7 @@ class BaseCodeGenerator(ABC):
         return block[start_idx:end_idx].strip()
 
     @abstractmethod
-    def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
+    def generate(self, input_data: CodeGeneratorInput) -> CodeGeneratorOutput:
         """
         입력 데이터를 바탕으로 Code를 생성합니다.
 
@@ -293,7 +293,7 @@ class BaseCodeGenerator(ABC):
             input_data: Code 생성 입력
 
         Returns:
-            DiffGeneratorOutput: LLM 응답 (Code 포함)
+            CodeGeneratorOutput: LLM 응답 (Code 포함)
         """
         pass
 

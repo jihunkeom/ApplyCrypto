@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 from config.config_manager import Configuration, load_config
 from models.table_access_info import TableAccessInfo
-from modifier.code_modifier import CodeModifier
+
 
 # Add src to sys.path
 current_dir = Path(__file__).resolve().parent
@@ -33,9 +33,6 @@ def main():
     parser.add_argument(
         "--config", type=str, default="config.json", help="Path to config.json"
     )
-    parser.add_argument(
-        "--mock", action="store_true", help="Force use of mock LLM provider"
-    )
 
     args = parser.parse_args()
     config_path = Path(args.config).resolve()
@@ -50,23 +47,12 @@ def main():
     # Load Config
     try:
         config: Configuration = load_config(str(config_path))
-        if args.mock:
-            config.llm_provider = "mock"
-            logger.info("Forcing LLM Provider to 'mock'")
-
         logger.info(f"Loaded config from {config_path}")
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
         return
 
-    # Initialize CodeModifier
-    try:
-        # Instantiate CodeModifier with project_root (ApplyCrypto) for context generation scope
-        code_modifier = CodeModifier(config=config)
-        logger.info("Initialized CodeModifier")
-    except Exception as e:
-        logger.error(f"Failed to initialize CodeModifier: {e}")
-        return
+
 
     # Construct TableAccessInfo
     if not config.access_tables:
@@ -139,19 +125,28 @@ def main():
     # Generate Contexts (Batches)
     try:
         from dataclasses import asdict
-        from modifier.context_generator import ContextGenerator
+        from modifier.context_generator import ContextGeneratorFactory
         from modifier.code_generator.code_generator_factory import CodeGeneratorFactory
+        from modifier.llm.mock_llm_provider import MockLLMProvider
+
+        # Force Mock LLM Provider
+        mock_llm_provider = MockLLMProvider()
+        logger.info("Using MockLLMProvider as requested.")
 
         # Create code generator
         code_generator = CodeGeneratorFactory.create(
             config=config,
-            llm_provider=code_modifier.llm_provider
+            llm_provider=mock_llm_provider
         )
 
-        # Generate batches using static method
-        batches = ContextGenerator.generate(
+        # Create context generator using Factory
+        context_generator = ContextGeneratorFactory.create(
             config=config,
-            code_generator=code_generator,
+            code_generator=code_generator
+        )
+
+        # Generate batches
+        batches = context_generator.generate(
             table_access_info=table_info,
         )
 

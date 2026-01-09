@@ -5,7 +5,7 @@ from models.modification_context import CodeSnippet
 
 
 @dataclass
-class DiffGeneratorOutput:
+class CodeGeneratorOutput:
     content: str
     tokens_used: int = 0
     parsed_out: List[Dict[str, Any]] = None
@@ -13,8 +13,8 @@ class DiffGeneratorOutput:
 
 
 @dataclass
-class DiffGeneratorInput:
-    """Diff 생성기 입력 데이터"""
+class CodeGeneratorInput:
+    """Code 생성기 입력 데이터"""
 
     code_snippets: List["CodeSnippet"]
     """

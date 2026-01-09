@@ -7,7 +7,7 @@ TODO: 구현 예정
 
 from typing import List
 
-from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
+from models.code_generator import CodeGeneratorInput, CodeGeneratorOutput
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
 from models.modification_context import ModificationContext
@@ -18,7 +18,7 @@ from ..base_code_generator import BaseCodeGenerator
 class TypeHandlerCodeGenerator(BaseCodeGenerator):
     """TypeHandler Code 생성기"""
 
-    def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
+    def generate(self, input_data: CodeGeneratorInput) -> CodeGeneratorOutput:
         """
         입력 데이터를 바탕으로 Code를 생성합니다.
 
@@ -26,7 +26,7 @@ class TypeHandlerCodeGenerator(BaseCodeGenerator):
             input_data: Code 생성 입력
 
         Returns:
-            DiffGeneratorOutput: LLM 응답 (Code 포함)
+            CodeGeneratorOutput: LLM 응답 (Code 포함)
         """
         # TODO: TypeHandler 특화 로직 구현 예정
         # 현재는 ControllerOrServiceCodeGenerator와 동일한 로직 사용 가능

@@ -14,7 +14,7 @@ from typing import Dict, List
 from tqdm import tqdm
 
 from config.config_manager import Configuration
-from models.diff_generator import DiffGeneratorInput, DiffGeneratorOutput
+from models.code_generator import CodeGeneratorInput, CodeGeneratorOutput
 from models.modification_context import ModificationContext
 from models.modification_plan import ModificationPlan
 from models.table_access_info import TableAccessInfo
@@ -30,7 +30,7 @@ logger = logging.getLogger("applycrypto")
 class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
     """Controller/Service Code 생성기"""
 
-    def create_file_mapping(self, input_data: DiffGeneratorInput) -> Dict[str, str]:
+    def create_file_mapping(self, input_data: CodeGeneratorInput) -> Dict[str, str]:
         """
         파일명 -> 절대 경로 매핑을 생성합니다.
 
@@ -45,7 +45,7 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             for snippet in input_data.code_snippets
         }
 
-    def generate(self, input_data: DiffGeneratorInput) -> DiffGeneratorOutput:
+    def generate(self, input_data: CodeGeneratorInput) -> CodeGeneratorOutput:
         """
         입력 데이터를 바탕으로 Code를 생성합니다.
         BaseCodeGenerator의 기존 구현을 이관했습니다.
@@ -54,7 +54,7 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             input_data: Code 생성 입력
 
         Returns:
-            DiffGeneratorOutput: LLM 응답 (Code 포함)
+            CodeGeneratorOutput: LLM 응답 (Code 포함)
         """
         prompt = self.create_prompt(input_data)
         file_mapping = self.create_file_mapping(input_data)
@@ -72,8 +72,8 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
         try:
             response = self.llm_provider.call(prompt)
 
-            # DiffGeneratorOutput 객체 생성
-            output = DiffGeneratorOutput(
+            # CodeGeneratorOutput 객체 생성
+            output = CodeGeneratorOutput(
                 content=response.get("content", ""),
                 tokens_used=response.get("tokens_used", 0),
                 file_mapping=file_mapping,
@@ -176,7 +176,7 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             # extra_variables 준비
             extra_vars = {"file_count": len(batch)}
 
-            input_data = DiffGeneratorInput(
+            input_data = CodeGeneratorInput(
                 code_snippets=batch,
                 table_info=table_info_str,
                 layer_name=layer_name,

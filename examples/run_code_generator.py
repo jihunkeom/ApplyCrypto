@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from config.config_manager import Configuration, load_config
-from models.diff_generator import DiffGeneratorInput
+from models.code_generator import CodeGeneratorInput
 from models.modification_context import CodeSnippet
 from modifier.code_modifier import CodeModifier
 from persistence.data_persistence_manager import DataPersistenceManager
@@ -24,12 +24,12 @@ load_dotenv(project_root / ".env")
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
-logger = logging.getLogger("test_diff_generator")
+logger = logging.getLogger("test_code_generator")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Test DiffGenerator with a single file snippet."
+        description="Test CodeGenerator with a single file snippet."
     )
     parser.add_argument("file_path", type=str, help="Path to the source file to test")
     parser.add_argument(
@@ -68,7 +68,7 @@ def main():
             logger.info("Forcing LLM Provider to 'mock'")
 
         logger.info(f"Loaded config from {config_path}")
-        logger.info(f"Diff Generator Type: {config.diff_gen_type}")
+        logger.info(f"Modification Type: {config.modification_type}")
         logger.info(f"Generate Full Source: {config.generate_full_source}")
     except Exception as e:
         logger.error(f"Failed to load config: {e}")
@@ -84,12 +84,12 @@ def main():
     # Create CodeSnippet
     snippet = CodeSnippet(path=str(file_path), content=content)
 
-    # Initialize CodeModifier to get the correct DiffGenerator
+    # Initialize CodeModifier to get the correct CodeGenerator
     try:
         # We pass project_root from config
         modifier = CodeModifier(config=config)
-        diff_generator = modifier.diff_generator
-        logger.info(f"Initialized DiffGenerator: {type(diff_generator).__name__}")
+        code_generator = modifier.code_generator
+        logger.info(f"Initialized CodeGenerator: {type(code_generator).__name__}")
 
         # Prepare dummy table info or relevant info
         # Check if the file matches any table in config?
@@ -136,28 +136,28 @@ def main():
 
         extra_vars = {"file_count": 1}
 
-        input_data = DiffGeneratorInput(
+        input_data = CodeGeneratorInput(
             code_snippets=[snippet],
             table_info=table_info_str,
             layer_name="service",  # Default assumption
             extra_variables=extra_vars,
         )
 
-        logger.info("Generating diff...")
-        diff_out = diff_generator.generate(input_data)
+        logger.info("Generating code...")
+        code_out = code_generator.generate(input_data)
 
         # Prepare log content
         log_content = []
         log_content.append("\n" + "=" * 50)
         log_content.append("GENERATED RESPONSE")
         log_content.append("=" * 50)
-        log_content.append(f"Tokens Used: {diff_out.tokens_used}")
+        log_content.append(f"Tokens Used: {code_out.tokens_used}")
         log_content.append("-" * 20)
 
         # Handle \n in text for pretty printing
-        if diff_out.parsed_out:
+        if code_out.parsed_out:
             formatted_lines = []
-            for mod in diff_out.parsed_out:
+            for mod in code_out.parsed_out:
                 formatted_lines.append("-" * 30)
                 for k, v in mod.items():
                     if k == "unified_diff":
@@ -168,7 +168,7 @@ def main():
                 formatted_lines.append("-" * 30)
             content_str = "\n".join(formatted_lines)
         else:
-            content_str = diff_out.content
+            content_str = code_out.content
             if content_str:
                 content_str = content_str.replace("\\n", "\n")
 
@@ -182,9 +182,9 @@ def main():
                 target_project=target_project_path,
                 output_dir=target_project_path / ".applycrypto",
             )
-            persistence.save_text_file("\n".join(log_content), "diff_generator_log.txt")
+            persistence.save_text_file("\n".join(log_content), "code_generator_log.txt")
             logger.info(
-                f"Log file generated at {target_project_path / '.applycrypto/diff_generator_log.txt'}"
+                f"Log file generated at {target_project_path / '.applycrypto/code_generator_log.txt'}"
             )
         except Exception as e:
             logger.error(f"Failed to generate log file: {e}")

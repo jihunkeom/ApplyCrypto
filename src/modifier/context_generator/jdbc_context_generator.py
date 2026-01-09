@@ -5,12 +5,12 @@ from typing import Dict, List, Set
 from models.modification_context import CodeSnippet, ModificationContext
 from models.table_access_info import TableAccessInfo
 
-from modifier.context_generator.base_context_generator import ContextGenerator
+from modifier.context_generator.base_context_generator import BaseContextGenerator
 
 logger = logging.getLogger("applycrypto.jdbc_context_generator")
 
 
-class JdbcContextGenerator(ContextGenerator):
+class JdbcContextGenerator(BaseContextGenerator):
     """
     JDBC specific Context Generator.
     Groups 'biz' and 'svc' layer files by their parent 'keyword' directory.
