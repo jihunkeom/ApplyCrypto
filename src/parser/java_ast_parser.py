@@ -503,6 +503,8 @@ class JavaASTParser:
             parameters=[],
             class_name=class_name,
             file_path=str(file_path),
+            line_number=node.start_point[0] + 1,
+            end_line_number=node.end_point[0] + 1,
         )
 
         # 메서드 어노테이션 및 접근 제어자

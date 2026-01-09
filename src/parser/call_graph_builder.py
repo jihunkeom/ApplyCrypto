@@ -172,6 +172,8 @@ class CallGraphBuilder:
                     "annotations": method.annotations,
                     "layer": layer,
                     "class_info": cls,  # _get_layer에서 사용하기 위해 추가
+                    "line_number": method.line_number,
+                    "end_line_number": method.end_line_number,
                 }
 
                 # 현재 클래스의 필드 정보 가져오기
@@ -557,6 +559,10 @@ class CallGraphBuilder:
                 self.method_metadata[method_sig]["layer"] = node["layer"]
             if "arguments" in node:
                 self.method_metadata[method_sig]["arguments"] = node["arguments"]
+            if "line_number" in node:
+                self.method_metadata[method_sig]["line_number"] = node["line_number"]
+            if "end_line_number" in node:
+                self.method_metadata[method_sig]["end_line_number"] = node["end_line_number"]
 
             # 부모에서 현재 노드로 edge 추가
             if parent:
@@ -935,6 +941,8 @@ class CallGraphBuilder:
                 metadata = self.method_metadata[node]
                 node_info["class_name"] = metadata.get("class_name", "")
                 node_info["file_path"] = metadata.get("file_path", "")
+                node_info["line_number"] = metadata.get("line_number", 0)
+                node_info["end_line_number"] = metadata.get("end_line_number", 0)
 
                 # 메서드 인자 정보 추가
                 if "method" in metadata:
