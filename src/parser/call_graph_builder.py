@@ -555,6 +555,8 @@ class CallGraphBuilder:
                 self.method_metadata[method_sig]["file_path"] = node["file_path"]
             if "layer" in node:
                 self.method_metadata[method_sig]["layer"] = node["layer"]
+            if "arguments" in node:
+                self.method_metadata[method_sig]["arguments"] = node["arguments"]
 
             # 부모에서 현재 노드로 edge 추가
             if parent:
@@ -933,6 +935,15 @@ class CallGraphBuilder:
                 metadata = self.method_metadata[node]
                 node_info["class_name"] = metadata.get("class_name", "")
                 node_info["file_path"] = metadata.get("file_path", "")
+
+                # 메서드 인자 정보 추가
+                if "method" in metadata:
+                    method = metadata["method"]
+                    node_info["arguments"] = [
+                        {"name": p.name, "type": p.type} for p in method.parameters
+                    ]
+                elif "arguments" in metadata:
+                    node_info["arguments"] = metadata["arguments"]
 
             # 자식 노드 가져오기
             if node in self.call_graph:
