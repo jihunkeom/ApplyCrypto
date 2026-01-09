@@ -52,9 +52,9 @@ class MybatisContextGenerator(BaseContextGenerator):
         
         # Regex to capture the Entity Name
         # Convention: [name]Service.java, [name]ServiceImpl.java, 
-        # [name]Controller.java, [name]Repository.java, [name]Dao.java,
-        # [name]Mapper.java, [name]-mapper.xml
-        pattern = re.compile(r"^(?P<name>.*?)(?:(?:Service|ServiceImpl|Controller|Repository|Dao|Mapper|VO)\.java|-mapper\.xml)$")
+        # [name]Controller.java, [name]Repository.java, [name]Dao.java
+        # pattern = re.compile(r"^(?P<name>.*?)(?:Service|ServiceImpl|Controller|Repository|Dao)\.java$")
+        pattern = re.compile(r"^(?P<name>.*?)(?:Service|ServiceImpl|Controller)\.java$")
 
         for file_path in all_file_paths:
             filename = os.path.basename(file_path)
