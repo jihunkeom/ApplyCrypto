@@ -3,7 +3,7 @@ import os
 
 def render_table_detail(table_data):
     if not table_data:
-        st.error("No table data selected.")
+        st.error("선택된 테이블 데이터가 없습니다.")
         return
 
     table_name = table_data.get('table_name', 'Unknown')
@@ -33,18 +33,18 @@ def render_table_detail(table_data):
     st.divider()
 
     # SQL Queries Summary
-    st.markdown("### SQL Queries Associated")
+    st.markdown("### 관련 SQL 쿼리")
     sql_queries = table_data.get('sql_queries', [])
     
     if sql_queries:
-        st.write(f"Total Queries: {len(sql_queries)}")
+        st.write(f"총 쿼리 수: {len(sql_queries)}")
         # We can list them simply here, as the sidebar allows navigation
         for q in sql_queries:
             qid = q.get('id', 'Unknown')
             qtype = q.get('query_type', 'Unknown')
             st.caption(f"{qid} ({qtype})")
     else:
-        st.info("No specific SQL queries defined for this table entry.")
+        st.info("이 테이블 항목에 대해 정의된 특정 SQL 쿼리가 없습니다.")
 
     # Raw Data
     with st.expander("Raw Dictionary Data"):

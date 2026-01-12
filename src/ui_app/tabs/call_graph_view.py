@@ -23,7 +23,7 @@ def get_code_snippet(file_path, start_line, end_line):
         snippet = "".join(lines[s_idx:e_idx])
         return snippet
     except Exception as e:
-        return f"Error reading file: {e}"
+        return f"파일 읽기 오류: {e}"
 
 def find_paths_to_method(node, target_method_name, current_path, results):
     # node is a dict representing a method call in the tree
@@ -65,16 +65,16 @@ def render_call_graph_view():
     cg_data = st.session_state.get("call_graph_data")
     
     if not target_id:
-        st.error("No target SQL ID selected.")
+        st.error("대상 SQL ID가 선택되지 않았습니다.")
         return
         
     if not cg_data:
-        st.error("Call graph data is missing.")
+        st.error("콜 그래프 데이터가 없습니다.")
         return
         
     st.header(f"Call Flows for: `{target_id}`")
     
-    if st.button("← Back to SQL Detail"):
+    if st.button("← SQL 상세로 돌아가기"):
         st.session_state["view_mode"] = "sql"
         st.rerun()
     
@@ -84,23 +84,36 @@ def render_call_graph_view():
     trees = cg_data.get('call_trees', [])
     paths = []
     
-    with st.spinner("Searching call graph..."):
+    with st.spinner("콜 그래프 검색 중..."):
         for tree in trees:
             find_paths_to_method(tree, target_id, [], paths)
             
     if not paths:
-        st.warning(f"No execution paths found reaching `{target_id}` in the known call graph.")
-        st.info("Tip: Ensure the call graph covers the endpoints that use this mapper method.")
+        st.warning(f"알려진 콜 그래프에서 `{target_id}`에 도달하는 실행 경로를 찾을 수 없습니다.")
+        st.info("팁: 콜 그래프가 이 매퍼 메서드를 사용하는 엔드포인트를 포함하는지 확인하세요.")
         return
         
-    st.success(f"Found {len(paths)} unique execution path(s).")
+    st.success(f"{len(paths)}개의 고유한 실행 경로를 찾았습니다.")
     
     for i, path in enumerate(paths):
+        if i > 0:
+            st.markdown(
+                """
+                <hr style="
+                    border: 0; 
+                    height: 3px; 
+                    background-image: linear-gradient(to right, rgba(0, 0, 0, 0), rgba(13, 110, 253, 0.75), rgba(0, 0, 0, 0)); 
+                    margin: 30px 0;
+                ">
+                """, 
+                unsafe_allow_html=True
+            )
+
         # Entry point is the first element
         entry = path[0]
         entry_sig = entry['signature']
         
-        with st.expander(f"Path {i+1}: from ...{entry_sig[-50:] if len(entry_sig)>50 else entry_sig}", expanded=True):
+        with st.expander(f"Path {i+1}: from...{entry_sig[-50:] if len(entry_sig)>50 else entry_sig}", expanded=True):
             # Render the stack
             for stage_idx, step in enumerate(path):
                 sig = step['signature']
@@ -138,13 +151,13 @@ def render_call_graph_view():
                 
                 if fp and sl and el:
                     # Provide a unique key using path index and step index
-                    with st.expander("View Code", expanded=False):
+                    with st.expander("Code Snippet", expanded=False):
                         snippet = get_code_snippet(fp, sl, el)
                         if snippet:
                             st.code(snippet, language='java')
-                            st.caption(f"Source: {os.path.basename(fp)} (Lines {sl}-{el})")
+                            st.caption(f"Source: {os.path.basename(fp)} (Line {sl}-{el})")
                         else:
-                            st.text("Code snippet not available (file not found locally or invalid range).")
+                            st.text("코드 스니펫을 사용할 수 없습니다 (파일을 로컬에서 찾을 수 없거나 범위가 잘못되었습니다).")
                 
                 if not is_target:
                     st.markdown("<div style='text-align: center; font-size: 20px;'>↓</div>", unsafe_allow_html=True)

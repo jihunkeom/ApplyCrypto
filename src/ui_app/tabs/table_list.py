@@ -2,10 +2,10 @@ import streamlit as st
 import os
 
 def render_table_list(data):
-    st.header("Table Access Information")
+    st.header("테이블 접근 정보")
     
     if not data:
-        st.info("No table access information available.")
+        st.info("테이블 접근 정보를 사용할 수 없습니다.")
         return
 
     # Sidebar Summary
@@ -55,7 +55,7 @@ def render_table_list(data):
                     with col2:
                         # Unique key for button using table name and query id
                         btn_key = f"btn_{table_name}_{query_id}"
-                        if st.button("View Details", key=btn_key):
+                        if st.button("상세 보기", key=btn_key):
                             st.session_state["selected_query"] = query
                             st.session_state["selected_table_name"] = table_name
                             st.session_state["current_tab"] = "SQL Details"
@@ -63,4 +63,4 @@ def render_table_list(data):
                     
                     st.divider()
             else:
-                st.info("No specific SQL queries defined for this table entry.")
+                st.info("이 테이블 항목에 대해 정의된 특정 SQL 쿼리가 없습니다.")
