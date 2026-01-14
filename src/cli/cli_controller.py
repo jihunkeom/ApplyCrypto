@@ -327,6 +327,9 @@ class CLIController:
             # DataPersistenceManager 초기화
             persistence_manager = DataPersistenceManager(target_project)
 
+            # 백업 파일 삭제 (.backup, .backup.[num])
+            persistence_manager.remove_all_backups()
+
             # 삭제 실행
             persistence_manager.clear_all(use_backup=args.backup)
 
@@ -343,6 +346,8 @@ class CLIController:
             self.logger.exception(f"clear 명령어 실행 중 오류: {e}")
             self.logger.error(f"오류: {e}")
             return 1
+
+
 
     def _handle_analyze(self, args: argparse.Namespace) -> int:
         """
@@ -1188,6 +1193,12 @@ class CLIController:
         try:
             # 설정 파일 로드
             config = self.load_config(args.config)
+            target_project = Path(config.target_project)
+
+            # Data Persistence Manager 초기화 및 백업 삭제
+            # 모든 수정 모드에서 공통으로 처리
+            persistence_manager = DataPersistenceManager(target_project)
+
 
             # modification_type에 따른 분기 처리
             if config.modification_type == "TypeHandler":
@@ -1201,14 +1212,9 @@ class CLIController:
                 return self._handle_modify_with_call_chain(args, config)
 
             # 기존 로직 (직접 코드 수정 방식)
-            target_project = Path(config.target_project)
-
             mode = "미리보기" if args.dry_run else "실제 수정"
             self.logger.info(f"파일 수정 시작 (모드: {mode})...")
             self.logger.info(f"파일 수정을 시작합니다 (모드: {mode})...")
-
-            # Data Persistence Manager 초기화
-            persistence_manager = DataPersistenceManager(target_project)
 
             # Debug Manager 초기화
             debug_manager = DebugManager(target_project) if args.debug else None
