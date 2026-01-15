@@ -61,6 +61,12 @@ class DebugManager:
             diff_filename = f"{filename}.diff"
             save_path = self.diff_dir / diff_filename
             
+            # 중복 파일명 처리
+            counter = 1
+            while save_path.exists():
+                save_path = self.diff_dir / f"{filename}_{counter}.diff"
+                counter += 1
+            
             # 원본 파일 읽기
             original_path = self.target_project / plan.file_path
             # 만약 plan.file_path가 절대경로라면

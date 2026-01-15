@@ -6,6 +6,7 @@ Data Persistence Manager 모듈
 
 import json
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Type, TypeVar
@@ -453,4 +454,29 @@ class DataPersistenceManager:
             self.logger.info("모든 데이터 삭제 완료")
         except Exception as e:
             raise PersistenceError(f"데이터 삭제 실패: {e}")
+
+    def remove_all_backups(self) -> int:
+        """
+        타겟 프로젝트 내의 모든 .backup 또는 .backup.[num] 파일을 삭제합니다.
+
+        Returns:
+            int: 삭제된 파일 수
+        """
+        self.logger.info("백업 파일 삭제 시작...")
+
+        # .backup 또는 .backup.[num] 패턴 (예: file.java.backup, file.java.backup.1)
+        backup_pattern = re.compile(r".*\.backup(\.\d+)?$")
+        count = 0
+
+        for file_path in self.target_project.rglob("*"):
+            if file_path.is_file() and backup_pattern.match(file_path.name):
+                try:
+                    file_path.unlink()
+                    self.logger.debug(f"백업 파일 삭제: {file_path}")
+                    count += 1
+                except Exception as e:
+                    self.logger.warning(f"백업 파일 삭제 실패: {file_path} - {e}")
+
+        self.logger.info(f"총 {count}개의 백업 파일이 삭제되었습니다.")
+        return count
 
