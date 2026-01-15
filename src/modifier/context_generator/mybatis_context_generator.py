@@ -1,12 +1,10 @@
 import logging
 import os
-import re
 from typing import List, Dict, Optional
 from pathlib import Path
 
 from modifier.context_generator.base_context_generator import BaseContextGenerator
 from models.modification_context import ModificationContext
-from models.table_access_info import TableAccessInfo
 from parser.java_ast_parser import JavaASTParser
 
 logger = logging.getLogger("applycrypto.context_generator")
@@ -79,6 +77,41 @@ class MybatisContextGenerator(BaseContextGenerator):
         # JavaASTParser 인스턴스 생성
         java_parser = JavaASTParser()
 
+        # Service import들을 사전에 수집하여, Controller가 직접 import 하지 않은 Service에서만 import된 VO도 포함되도록 한다.
+        # (와일드카드/무import 케이스는 이번 변경 범위에서 제외)
+        all_service_imports = set()
+        for service_file in service_files:
+            try:
+                service_path = Path(service_file)
+                service_tree, service_error = java_parser.parse_file(service_path)
+                if service_error:
+                    logger.debug(
+                        f"Service 파일 파싱 실패(사전 수집): {service_file} - {service_error}"
+                    )
+                    continue
+
+                service_classes = java_parser.extract_class_info(
+                    service_tree, service_path
+                )
+                if not service_classes:
+                    continue
+
+                service_class = None
+                for cls in service_classes:
+                    if cls.access_modifier == "public":
+                        service_class = cls
+                        break
+                if service_class is None:
+                    service_class = service_classes[0]
+
+                all_service_imports.update(service_class.imports)
+                print(service_class.imports)
+            except Exception as e:
+                logger.warning(
+                    f"Service 파일 처리 실패(사전 수집): {service_file} - {e}"
+                )
+                continue
+
         # Controller별 파일 묶음을 저장할 딕셔너리
         # key: controller 파일 이름(stem), value: 관련 파일 경로 리스트
         file_groups: Dict[str, List[str]] = {}
@@ -149,40 +182,10 @@ class MybatisContextGenerator(BaseContextGenerator):
 
                 # 5. 3번에서 포함된 Service Layer의 파일 각각에 대해 JavaASTParser를 사용하여
                 # class 정보를 가져오고 그 중에서 public class를 선택하여 import 문을 가져와서 import 목록을 보강한다
+                # 기존: matched_service_files(=Controller가 import한 Service)만 보강
+                # 변경: service_files 전체에서 수집한 import를 합쳐 service-only import VO도 포함
                 enhanced_imports = set(controller_imports)
-                for service_file in matched_service_files:
-                    try:
-                        service_path = Path(service_file)
-                        # 파일 파싱
-                        service_tree, service_error = java_parser.parse_file(
-                            service_path
-                        )
-                        if service_error:
-                            logger.debug(
-                                f"Service 파일 파싱 실패: {service_file} - {service_error}"
-                            )
-                            continue
-
-                        # 클래스 정보 추출
-                        service_classes = java_parser.extract_class_info(
-                            service_tree, service_path
-                        )
-                        if service_classes:
-                            # public class 찾기
-                            service_class = None
-                            for cls in service_classes:
-                                if cls.access_modifier == "public":
-                                    service_class = cls
-                                    break
-
-                            # public class가 없으면 첫 번째 클래스 사용
-                            if service_class is None:
-                                service_class = service_classes[0]
-
-                            enhanced_imports.update(service_class.imports)
-                    except Exception as e:
-                        logger.warning(f"Service 파일 처리 실패: {service_file} - {e}")
-                        continue
+                enhanced_imports.update(all_service_imports)
 
                 # 6. Repository Layer에 수집되어 있는 파일 목록 중에서
                 # import 목록에 포함되어 있는 파일들만 선택해서 VO 그룹에 추가한다 (context용)

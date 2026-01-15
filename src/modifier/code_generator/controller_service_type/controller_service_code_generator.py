@@ -142,6 +142,11 @@ class ControllerOrServiceCodeGenerator(BaseCodeGenerator):
             logger.info("_generate_batch_plans():")
             for file_path in batch:
                 logger.info(f"file path: {file_path}")
+            # 어떤 VO(컨텍스트 파일)들이 프롬프트 Reference 섹션에 들어가는지 함께 로깅
+            context_files = modification_context.context_files or []
+            logger.info(f"context (VO) file count: {len(context_files)}")
+            for ctx_path in context_files:
+                logger.info(f"context (VO) file path: {ctx_path}")
             logger.info("--------------------------------")
             # Code 생성
             code_out = self.generate(input_data)
