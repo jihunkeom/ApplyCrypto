@@ -112,8 +112,11 @@ class DebugManager:
              return plan.modified_code or ""
 
         # 2. generate_full_source가 True이면 difflib 사용
-        original_lines = original_content.splitlines(keepends=True)
-        modified_lines = plan.modified_code.splitlines(keepends=True)
+        # Trailing space 및 줄바꿈 차이를 무시하기 위해 rstrip() 후 \n 추가
+        original_lines = [line.rstrip() + "\n" for line in original_content.splitlines()]
+        # plan.modified_code가 None일 경우를 대비해 empty string 처리 (하지만 호출부에서 체크함)
+        code_to_diff = plan.modified_code if plan.modified_code is not None else ""
+        modified_lines = [line.rstrip() + "\n" for line in code_to_diff.splitlines()]
         
         diff = difflib.unified_diff(
             original_lines,
