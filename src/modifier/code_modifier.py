@@ -259,9 +259,14 @@ class CodeModifier:
                 self.error_handler.backup_file(file_path)
 
             # 패치 적용
-            success, error = self.code_patcher.apply_patch(
-                file_path=file_path, modified_code=modified_code, dry_run=dry_run
-            )
+            if self.config.generate_full_source:
+                success, error = self.code_patcher.replace_full_code(
+                    file_path=file_path, full_source=modified_code, dry_run=dry_run
+                )
+            else:
+                success, error = self.code_patcher.apply_patch(
+                    file_path=file_path, modified_code=modified_code, dry_run=dry_run
+                )
 
             if success:
                 status = "success"

@@ -78,7 +78,7 @@ class BaseCodeGenerator(ABC):
             if config and config.generate_full_source:
                 template_filename = "template_full.md"
             else:
-                template_filename = "template.md"
+                template_filename = "template_diff.md"
 
             self.template_path = template_dir / template_filename
 

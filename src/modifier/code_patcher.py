@@ -8,6 +8,7 @@ import difflib
 import logging
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -42,11 +43,11 @@ class CodePatcher:
         self, file_path: Path, modified_code: str, dry_run: bool = False
     ) -> Tuple[bool, Optional[str]]:
         """
-        Modified Code를 파일에 적용합니다 (Full Source 또는 Diff).
+        Unified Diff를 파일에 적용합니다.
 
         Args:
             file_path: 수정할 파일 경로
-            modified_code: 수정된 코드 내용 (전체 소스 코드 또는 Unified Diff)
+            modified_code: Unified Diff 내용
             dry_run: 실제 수정 없이 시뮬레이션만 수행 (기본값: False)
 
         Returns:
@@ -55,7 +56,7 @@ class CodePatcher:
         try:
             # LLM 응답에서 받은 절대 경로를 그대로 사용
             if not file_path.is_absolute():
-                # 상대 경로인 경우에만 project_root와 결합 (일반적으로는 발생하지 않아야 함)
+                # 상대 경로인 경우에만 project_root와 결합
                 logger.warning(
                     f"상대 경로가 전달되었습니다: {file_path}. 절대 경로로 변환합니다."
                 )
@@ -70,53 +71,21 @@ class CodePatcher:
                 return False, error_msg
 
             if dry_run:
-                logger.info(f"[DRY RUN] 파일 수정 시뮬레이션: {file_path}")
+                logger.info(f"[DRY RUN] 파일 패치 시뮬레이션: {file_path}")
                 return True, None
 
-            # generate_full_source 설정 확인
-            generate_full_source = (
-                self.config.generate_full_source if self.config else False
-            )
+            
 
-            if generate_full_source:
-                # 전체 소스 코드를 파일에 덮어쓰기
-                return self.apply_full_source(
-                    file_path=file_path, full_source=modified_code, dry_run=dry_run
-                )
-            else:
-                # subprocess로 patch 명령을 수행하는 대신 apply_patch_using_difflib 사용
-                # # 임시 파일에 diff 저장
-                # with tempfile.NamedTemporaryFile(mode='w', suffix='.diff', delete=False) as diff_file:
-                #     diff_file.write(unified_diff)
-                #     diff_file_path = diff_file.name
-                #
-                # try:
-                #     # patch 명령 실행
-                #     result = subprocess.run(
-                #         ["patch", "-p0", str(file_path), diff_file_path],
-                #         capture_output=True,
-                #         text=True,
-                #         cwd=self.project_root
-                #     )
-                #
-                #     if result.returncode != 0:
-                #         error_msg = f"patch 명령 실행 실패: {result.stderr}"
-                #         logger.error(error_msg)
-                #         return False, error_msg
-                #
-                #     logger.info(f"파일 수정 완료: {file_path}")
-                #     return True, None
-                #
-                # finally:
-                #     # 임시 파일 삭제
-                #     Path(diff_file_path).unlink()
+            # Markdown Code Block 처리 (```diff ... ``` 제거)
+            stripped_code = modified_code.strip()
+            if stripped_code.startswith("```diff"):
+                stripped_code = stripped_code[7:]
+                if stripped_code.endswith("```"):
+                    stripped_code = stripped_code[:-3]
+                modified_code = stripped_code.strip()
 
-                # apply_patch_using_difflib 사용
-
-                # 기존대로 unified diff 패치 적용
-                return self.apply_patch_using_difflib(
-                    file_path=file_path, modified_code=modified_code, dry_run=dry_run
-                )
+            # 직접 Python difflib로 패치 적용 (patch 명령어 의존성 제거)
+            return self.apply_patch_using_difflib(file_path, modified_code, dry_run)
 
         except Exception as e:
             error_msg = f"패치 적용 실패: {e}"
@@ -337,7 +306,7 @@ class CodePatcher:
             logger.warning(f"구문 검사 중 오류 발생: {e}")
             return True, None  # 오류가 있어도 계속 진행
 
-    def apply_full_source(
+    def replace_full_code(
         self, file_path: Path, full_source: str, dry_run: bool = False
     ) -> Tuple[bool, Optional[str]]:
         """

@@ -21,14 +21,16 @@ class DebugManager:
     2. 디버그 로그 관리
     """
     
-    def __init__(self, target_project: Path):
+    def __init__(self, target_project: Path, generate_full_source: bool = True):
         """
         DebugManager 초기화
         
         Args:
             target_project: 대상 프로젝트 경로
+            generate_full_source: 전체 소스 코드 생성 여부 (False면 Diff 포맷 사용)
         """
         self.target_project = Path(target_project)
+        self.generate_full_source = generate_full_source
         self.debug_dir = self.target_project / ".applycrypto" / "debug"
         self.diff_dir = self.debug_dir / "diffs"
         self.logger = logging.getLogger(__name__)
@@ -82,24 +84,7 @@ class DebugManager:
                     self.logger.warning(f"원본 파일을 읽을 수 없습니다: {e}")
             
             # Diff 생성
-            original_lines = original_content.splitlines(keepends=True)
-            modified_lines = plan.modified_code.splitlines(keepends=True)
-            
-            diff = difflib.unified_diff(
-                original_lines,
-                modified_lines,
-                fromfile=str(filename),
-                tofile=str(filename),
-                lineterm=""
-            )
-            
-            diff_content = "".join(diff)
-            
-            # 만약 diff가 비어있고 modified_code가 비어있지 않으며,
-            # modified_code가 diff 형식 같으면 그대로 사용
-            if not diff_content.strip() and plan.modified_code:
-                 if plan.modified_code.startswith("---") or "diff --git" in plan.modified_code:
-                     diff_content = plan.modified_code
+            diff_content = self._generate_diff(plan, original_content, filename)
             
             # 내용이 있을 때만 저장
             if diff_content.strip():
@@ -109,3 +94,40 @@ class DebugManager:
                 
         except Exception as e:
             self.logger.error(f"Diff 파일 저장 중 오류 발생: {e}")
+
+    def _generate_diff(self, plan: ModificationPlan, original_content: str, filename: str) -> str:
+        """
+        Diff 내용 생성
+        
+        Args:
+            plan: 수정 계획
+            original_content: 원본 파일 내용
+            filename: 파일명 (헤더용)
+            
+        Returns:
+            str: Unified Diff 문자열
+        """
+        # 1. generate_full_source가 False이면 이미 diff 포맷이라고 가정
+        if not self.generate_full_source:
+             return plan.modified_code or ""
+
+        # 2. generate_full_source가 True이면 difflib 사용
+        original_lines = original_content.splitlines(keepends=True)
+        modified_lines = plan.modified_code.splitlines(keepends=True)
+        
+        diff = difflib.unified_diff(
+            original_lines,
+            modified_lines,
+            fromfile=str(filename),
+            tofile=str(filename),
+            lineterm=""
+        )
+        
+        diff_content = "".join(diff)
+        
+        # fallback: 만약 diff가 비어있고 modified_code가 diff 형식 같으면 그대로 사용
+        if not diff_content.strip() and plan.modified_code:
+            if plan.modified_code.startswith("---") or "diff --git" in plan.modified_code:
+                diff_content = plan.modified_code
+                    
+        return diff_content
