@@ -1,5 +1,5 @@
 """
-Anyframe JDBC SQL Extractor
+Anyframe JDBC Batch SQL Extractor
 
 Anyframe 프레임워크를 사용하는 JDBC Java 파일에서 SQL을 추출하는 구현 클래스입니다.
 """
@@ -18,7 +18,7 @@ from ..llm_sql_extractor.llm_sql_extractor import LLMSQLExtractor
 from ..sql_extractor import SQLExtractor
 
 
-class AnyframeJDBCSQLExtractor(SQLExtractor):
+class AnyframeJDBCBatSQLExtractor(SQLExtractor):
     """
     Anyframe JDBC SQL Extractor 구현 클래스
 
@@ -51,7 +51,11 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
         self.logger = logging.getLogger(__name__)
 
         # class_info_map 가져오기
-        self.class_info_map = self.call_graph_builder.get_class_info_map()
+        if self.call_graph_builder:
+            self.class_info_map = self.call_graph_builder.get_class_info_map()
+        else:
+            self.class_info_map = {}
+        self.source_files_cache: List[SourceFile] = []
 
     @override
     def extract_from_files(
@@ -66,6 +70,8 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
         Returns:
             List[SQLExtractionOutput]: 추출된 SQL 쿼리 정보 목록
         """
+        self.source_files_cache = source_files
+
         # 먼저 파일 필터링 수행
         filtered_files = self.filter_sql_files(source_files)
 
@@ -96,15 +102,13 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
 
         results = []
 
-        for java_file in source_files:
+        for sql_xml_file in source_files:
             try:
-                # Anyframe JDBC SQL 추출
-                sql_queries_data = self._extract_anyframe_jdbc_sql_from_file(
-                    java_file.path
-                )
+                # *_SQL.xml 파일에서 SQL 추출
+                sql_queries_data = self._extract_sql_from_batch_xml(sql_xml_file.path)
 
                 if sql_queries_data:
-                    # strategy_specific에 Anyframe JDBC 특정 정보 저장
+                    # strategy_specific에 파일 특정 정보 저장
                     sql_queries = []
                     for query in sql_queries_data:
                         sql_queries.append(
@@ -117,15 +121,64 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
                         )
 
                     results.append(
-                        SQLExtractionOutput(file=java_file, sql_queries=sql_queries)
+                        SQLExtractionOutput(file=sql_xml_file, sql_queries=sql_queries)
                     )
 
             except Exception as e:
                 self.logger.warning(
-                    f"Anyframe JDBC SQL 추출 실패: {java_file.path} - {e}"
+                    f"배치 SQL XML 파일 추출 실패: {sql_xml_file.path} - {e}"
                 )
 
         return results
+
+    def _extract_sql_from_batch_xml(self, file_path: Path) -> List[dict]:
+        """
+        배치 *_SQL.xml 파일에서 sql 쿼리 추출
+
+        Args:
+            file_path *_SQL.xml 파일 경로
+
+        Returns:
+            List[dict]: 추출된 SQL 쿼리 목록
+                각 항복은 {"id": str, "query_type": str, "sql": str, "strategy_specific": dict} 형태
+        """
+        sql_queries = []
+
+        try:
+            # XML 파일 파싱
+            tree, error = self.xml_parser.parse_file(file_path)
+            if error:
+                self.logger.warning(f"XML 파싱 실패: {file_path} - {error}")
+                return sql_queries
+
+            root = tree.getroot()
+
+            for element in root.xpath(".//*[@id]"):
+                query_id = element.get("id", "")
+                if not query_id:
+                    continue
+
+                sql_text = "".join(element.itertext()).strip()
+                if not sql_text:
+                    continue
+
+                clean_sql = self.xml_parser.remove_sql_comments(sql_text)
+                if not clean_sql:
+                    continue
+
+                query_type = self._detect_query_type(clean_sql) or "SELECT"
+
+                sql_queries.append(
+                    {
+                        "id": query_id,
+                        "query_type": query_type,
+                        "sql": clean_sql,
+                        "strategy_specific": {"sql_xml_file": str(file_path)},
+                    }
+                )
+        except Exception as e:
+            self.logger.warning(f"배치 SQL XML 파일 추출 중 오류: {file_path} - {e}")
+        return sql_queries
 
     def _extract_anyframe_jdbc_sql_from_file(self, file_path: Path) -> List[dict]:
         """
@@ -350,11 +403,11 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
         """
         filtered = []
         for f in source_files:
-            if f.extension == ".java":
+            if f.extension == ".xml":
                 try:
                     file_name = f.path.name.upper()
-                    # DEM.java 또는 DQM.java로 끝나는지 확인 (대소문자 구분 없음)
-                    if file_name.endswith("DEM.JAVA") or file_name.endswith("DQM.JAVA"):
+                    # *_SQL.xml 파일인지 확인
+                    if file_name.endswith("_SQL.XML"):
                         filtered.append(f)
                 except Exception as e:
                     self.logger.warning(f"Failed to check file name for {f.path}: {e}")
@@ -365,7 +418,11 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
         self, sql_query: Dict[str, Any]
     ) -> Tuple[Optional[str], Dict[str, Set[str]], Set[str]]:
         """
-        SQL 쿼리에서 관련 클래스 파일 목록 추출
+        SQL 쿼리에서 관련 Java 배치 파일 목록 추출
+        3가지 방법으로 Java 배치 파일을 찾습니다:
+        1. Java 파일에서 SetQueryPath를 통해 직접 사용하는 경우
+        2. *_CFG.xml 파일에서 query-file 속성으로 선언된 경우
+        3. _SQL을 제거한 샅은 파일명의 Java에서 사용하는 경우
 
         Args:
             sql_query: SQL 쿼리 정보 딕셔너리
@@ -381,26 +438,277 @@ class AnyframeJDBCSQLExtractor(SQLExtractor):
 
         strategy_specific = sql_query.get("strategy_specific", {})
 
-        # AnyframeJDBC: parameter_type, result_type 사용
-        parameter_type = strategy_specific.get("parameter_type")
-        if parameter_type:
-            parameter_file = self._find_class_file(parameter_type)
-            if parameter_file:
-                layer_files["Repository"].add(parameter_file)
-                all_files.add(parameter_file)
+        sql_xml_file = strategy_specific.get("sql_xml_file", "")
 
-        result_type = strategy_specific.get("result_type")
-        if result_type:
-            dao_file = self._find_class_file(result_type)
-            if dao_file:
-                layer_files["Repository"].add(dao_file)
-                all_files.add(dao_file)
+        if not sql_xml_file:
+            return None, layer_files, all_files
+
+        sql_xml_path = Path(sql_xml_file)
+        sql_xml_name = sql_xml_path.name
+
+        # SQL XML 파일명에서 _SQL.xml 제거하여 기본 이름 추출
+        base_name = sql_xml_name.replace("_SQL.xml", "").replace("_SQL.XML", "")
+
+        # 방법 1: Java 파일에서 setQueryPath를 통해 직접 사용하는 경우
+        java_files_method1 = self._find_java_files_by_setquerypath(
+            sql_xml_name, sql_xml_path
+        )
+
+        # 방법 2: *_CFG.xml 파일에 query-file 속성으로 선언된 경우
+        java_files_method2 = self._find_java_files_by_cfg_xml(
+            sql_xml_name, sql_xml_path
+        )
+
+        # 방법 3: _SQL을 제거한 같은 파일명의 Java에서 사용하는 경우
+        java_files_method3 = self._find_java_files_by_name_convention(
+            base_name, sql_xml_path
+        )
+
+        # 모든 방법에서 찾은 Java 파일 수집
+        all_java_files = set[Any]()
+        all_java_files.update(java_files_method1)
+        all_java_files.update(java_files_method2)
+        all_java_files.update(java_files_method3)
+
+        for java_file in all_java_files:
+            layer_files["Batch"].add(java_file)
+            all_files.add(java_file)
 
         # method_string 생성: class_name.method_name
         method_string = None
-        method_name = sql_query.get("id")
-        class_name = strategy_specific.get("class_name")
-        if class_name and method_name:
-            method_string = f"{class_name}.{method_name}"
+
+        if all_java_files:
+            first_java_file = list[Any](all_java_files)[0]
+            class_name = self._extract_class_name_from_java_file(first_java_file)
+            query_id = sql_query.get("id", "")
+        if class_name and query_id:
+            method_string = f"{class_name}.{query_id}"
 
         return method_string, layer_files, all_files
+
+    def _find_java_files_by_setquerypath(
+        self, sql_xml_name: str, sql_xml_path: Path
+    ) -> Set[str]:
+        """
+        방법 1: Java 파일에서 setQueryPath를 통해 직접 사용하는 경우 찾기
+
+        Args:
+            sql_xml_name: SQL XML 파일명
+            sql_xml_path: SQL XML 파일 경로
+
+        Returns:
+            Set[str]: 찾은 Java 파일 경로 집합
+        """
+        java_files = set[Any]()
+
+        # SQL XML 파일명에서 경로 부분 추출
+        # 또는 전체 파일명만 사용
+        sql_xml_name_only = sql_xml_path.name
+
+        # 모든 Java 파일 검색
+        for source_file in self.source_files_cache:
+            if source_file.extension != ".java":
+                continue
+
+            try:
+                # 파일 읽기
+                encodings = ["utf-8", "euc-kr", "cp949", "latin-1", "iso-8859-1"]
+                source_code = None
+
+                for encoding in encodings:
+                    try:
+                        with open(source_file.path, "r", encoding=encoding) as f:
+                            source_code = f.read()
+                        break
+                    except (UnicodeDecodeError, Exception):
+                        continue
+
+                    if not source_code:
+                        continue
+
+                    # setQueryPath 패턴 찾기
+                    pattern = (
+                        rf"setQueryPath\s*\(\s*[^)]*{re.escape(sql_xml_name_only)}"
+                    )
+
+                    if re.search(pattern, source_code, re.IGNORECASE):
+                        java_files.add(str(source_file.path))
+                        self.logger.debug(
+                            f"방법 1로 찾음: {source_file.path} -> {sql_xml_name}"
+                        )
+            except Exception as e:
+                self.logger.warning(f"Java 파일 검색 중 오류: {source_file.path} - {e}")
+
+        return java_files
+
+    def _find_java_files_by_cfg_xml(
+        self, sql_xml_name: str, sql_xml_path: Path
+    ) -> Set[str]:
+        """
+        방법 2: *_CFG_XML 파일에 query-file 속성으로 선언된 경우 찾기
+
+        Args:
+            sql_xml_name: SQL XML 파일명
+            sql_xml_path: SQL XML 파일 경로
+
+        Returns:
+            Set[str]: 찾은 Java 파일 경로 집합
+        """
+        java_files = set[Any]()
+
+        # 모든 소스 파일에서 *_CFG.xml 파일 찾기
+        cfg_files = []
+
+        for source_file in self.source_files_cache:
+            if source_file.extension == ".xml":
+                file_name = source_file.path.name.upper()
+                if file_name.endswith("_CFG.XML"):
+                    cfg_files.append(source_file.path)
+
+        # SQL XML 파일의 디렉토리에서도 찾기
+        sql_xml_dir = sql_xml_path.parent
+        for cfg_file in sql_xml_dir.glob("*_CFG.xml"):
+            if cfg_file not in cfg_files:
+                cfg_files.append(cfg_file)
+
+        # 각 CFG XML 파일 검색
+        for cfg_file in cfg_files:
+            try:
+                # XML 파일 파싱
+                tree, error = self.xml_parser.parse_file(cfg_file)
+                if error:
+                    continue
+
+                root = tree.getroot()
+
+                # query-file 속성을 가진 요소 찾기
+                elements_with_query_file = root.xpath(".//*[@query-file]")
+
+                for element in elements_with_query_file:
+                    query_file = element.get("query-file", "")
+                    if not query_file:
+                        continue
+
+                    # query-file 값이 SQL XML 파일명과 일치하는지 확인
+                    query_file_name = (
+                        Path(query_file).name
+                        if "/" in query_file or "\\" in query_file
+                        else query_file
+                    )
+                    if (
+                        sql_xml_name == query_file_name
+                        or sql_xml_name.upper() == query_file_name.upper()
+                        or sql_xml_name in query_file
+                        or sql_xml_name.upper() in query_file.upper()
+                    ):
+                        class_name = element.get("class", "")
+                        if class_name:
+                            java_file = self._find_java_file_by_class_name(class_name)
+                            if java_file:
+                                java_files.add(java_file)
+                                self.logger.debug(
+                                    f"방법 2로 찾음: {cfg_file} -> {java_file}"
+                                )
+            except Exception as e:
+                self.logger.warning(f"CFG XML 파일 파싱 중 오류: {cfg_file} - {e}")
+
+        return java_files
+
+    def _find_java_files_by_name_convention(
+        self, base_name: str, sql_xml_path: Path
+    ) -> Set[str]:
+        """
+        방법 3: _SQL을 제거한 같은 파일명의 Java에서 사용하는 경우 찾기
+
+        Args:
+            base_name: SQL XML 파일명에서 _SQL.xml을 제거한 기본 이름
+            sql_xml_path: SQL XML 파일 경로
+
+        Returns:
+            Set[str]: 찾은 Java 파일 경로 집합
+        """
+        java_files = set[Any]()
+
+        # 같은 디렉토리에서 {base_name}.java 파일 찾기
+        sql_xml_dir = sql_xml_path.parent
+
+        java_file_path = sql_xml_dir / f"{base_name}.java"
+        if java_file_path.exists():
+            java_files.add(str(java_file_path))
+            self.logger.debug(f"방법 3으로 찾음: {java_file_path}")
+
+        java_file_path_upper = sql_xml_dir / f"{base_name.upper()}.java"
+        if (
+            java_file_path_upper.exists()
+            and str(java_file_path_upper) not in java_files
+        ):
+            java_files.add(str(java_file_path_upper))
+            self.logger.debug(f"방법 3으로 찾음: {java_file_path_upper}")
+
+        java_file_path_lower = sql_xml_dir / f"{base_name.lower()}.java"
+        if (
+            java_file_path_lower.exists()
+            and str(java_file_path_lower) not in java_files
+        ):
+            java_files.add(str(java_file_path_lower))
+            self.logger.debug(f"방법 3으로 찾음: {java_file_path_lower}")
+
+        return java_files
+
+    def _find_java_file_by_class_name(self, class_name: str) -> Optional[str]:
+        """
+        클래스명으로 Java 파일 찾기
+
+        Args:
+            class_name: 클래스명 (전체 패키지명 포함 또는 단순 클래스명)
+
+        Returns:
+            Optional[str]: Java 파일 경로
+        """
+        # 전체 클래스명으로 찾기
+        if class_name in self.class_info_map:
+            class_infos = self.class_info_map[class_name]
+            if class_infos:
+                return class_infos[0].get("file_path")
+
+        # 단순 클래스명으로 찾기
+        simple_class_name = class_name.split(".")[-1]
+
+        if simple_class_name in self.class_info_map:
+            class_infos = self.class_info_map[simple_class_name]
+
+            for class_info in class_infos:
+                if class_info.get("full_class_name") == class_name:
+                    return class_info.get("file_path")
+            if class_infos:
+                return class_infos[0].get("file_path")
+
+        simple_class_name_java = f"{simple_class_name}.java"
+
+        for source_file in self.source_files_cache:
+            if (
+                source_file.path.name == simple_class_name_java
+                or source_file.path.name == simple_class_name_java.upper()
+            ):
+                return str(source_file.path)
+        return None
+
+    def _extract_class_name_from_java_file(self, java_file_path: str) -> Optional[str]:
+        """
+        Java 파일에서 클래스명 추출
+
+        Args:
+            java_file_path: Java 파일 경로
+
+        Returns:
+            Optional[str]: 클래스명
+        """
+        # class_info_map에서 찾기
+        for class_name, class_infos in self.class_info_map.items():
+            for class_info in class_infos:
+                if class_info.get("file_path") == java_file_path:
+                    return class_info.get("class_name")
+
+        java_path = Path(java_file_path)
+        class_name = java_path.stem
+        return class_name

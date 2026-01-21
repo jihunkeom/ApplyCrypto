@@ -1,8 +1,12 @@
 """
-MybatisCCS Context Generator 검증 스크립트
+MybatisCCS / MybatisCCSBatch Context Generator 검증 스크립트
 
 실제 타겟 프로젝트의 table_access_info.json을 읽어서
-MybatisCCSContextGenerator가 어떤 파일들을 context로 묶어서 LLM에게 전달하는지 검증합니다.
+Context Generator가 어떤 파일들을 context로 묶어서 LLM에게 전달하는지 검증합니다.
+
+지원하는 sql_wrapping_type:
+    - mybatis_ccs: CCS 온라인용 (CTL, SVCImpl, DQM 레이어)
+    - mybatis_ccs_batch: CCS 배치용 (BAT, BATVO 레이어)
 
 사용법:
     python examples/run_mybatis_ccs_context_generator.py --config /path/to/config.json
@@ -34,6 +38,10 @@ from models.modification_context import ModificationContext
 from modifier.context_generator.mybatis_ccs_context_generator import (
     MybatisCCSContextGenerator,
 )
+from modifier.context_generator.mybatis_ccs_batch_context_generator import (
+    MybatisCCSBatchContextGenerator,
+)
+from modifier.context_generator.base_context_generator import BaseContextGenerator
 
 
 def setup_logging(verbose: bool = False):
@@ -94,13 +102,38 @@ def create_mock_code_generator(config: Configuration) -> MagicMock:
     return mock_code_generator
 
 
+def create_context_generator(
+    config: Configuration,
+    mock_code_generator: MagicMock,
+) -> BaseContextGenerator:
+    """
+    sql_wrapping_type에 따라 적절한 Context Generator 생성
+
+    Args:
+        config: Configuration 객체
+        mock_code_generator: Mock CodeGenerator
+
+    Returns:
+        BaseContextGenerator: Context Generator 인스턴스
+    """
+    if config.sql_wrapping_type == "mybatis_ccs_batch":
+        return MybatisCCSBatchContextGenerator(config, mock_code_generator)
+    elif config.sql_wrapping_type == "mybatis_ccs":
+        return MybatisCCSContextGenerator(config, mock_code_generator)
+    else:
+        raise ValueError(
+            f"지원하지 않는 sql_wrapping_type: {config.sql_wrapping_type}. "
+            f"가능한 값: mybatis_ccs, mybatis_ccs_batch"
+        )
+
+
 def run_context_generator(
     config: Configuration,
     table_access_info: TableAccessInfo,
     logger: logging.Logger,
 ) -> List[ModificationContext]:
     """
-    MybatisCCSContextGenerator 실행
+    Context Generator 실행
 
     Args:
         config: Configuration 객체
@@ -113,8 +146,9 @@ def run_context_generator(
     # Mock CodeGenerator 생성
     mock_code_generator = create_mock_code_generator(config)
 
-    # MybatisCCSContextGenerator 인스턴스 생성
-    generator = MybatisCCSContextGenerator(config, mock_code_generator)
+    # sql_wrapping_type에 따라 적절한 Context Generator 생성
+    generator = create_context_generator(config, mock_code_generator)
+    logger.info(f"사용 중인 Context Generator: {generator.__class__.__name__}")
 
     # Context 생성
     contexts = generator.generate(
@@ -173,10 +207,28 @@ def extract_layer_from_path(file_path: str) -> str:
         file_path: 파일 경로
 
     Returns:
-        str: 레이어 힌트 (ctl, biz, svc, dqm 등)
+        str: 레이어 힌트 (ctl, biz, svc, dqm, bat, batvo 등)
     """
     path_lower = file_path.lower()
+    filename_lower = Path(file_path).name.lower()
 
+    # CCS 배치 레이어 (BAT, BATVO)
+    if "/bat/" in path_lower or "\\bat\\" in path_lower:
+        if "/batvo/" in path_lower or "\\batvo\\" in path_lower:
+            return "BATVO"
+        if filename_lower.endswith("batvo.java"):
+            return "BATVO"
+        if filename_lower.endswith("bat.java"):
+            return "BAT"
+        return "BAT"
+
+    # 파일명 기반 배치 레이어 감지
+    if filename_lower.endswith("batvo.java"):
+        return "BATVO"
+    if filename_lower.endswith("bat.java") and not filename_lower.endswith("_sql.xml"):
+        return "BAT"
+
+    # CCS 온라인 레이어 (CTL, SVC, BIZ, DQM)
     if "/ctl/" in path_lower or "\\ctl\\" in path_lower:
         return "CTL"
     elif "/biz/" in path_lower or "\\biz\\" in path_lower:
@@ -261,8 +313,19 @@ def main():
     try:
         config = load_config(str(config_path))
         logger.info(f"Config 로드 완료: {config_path}")
+        logger.info(f"  - framework_type: {config.framework_type}")
+        logger.info(f"  - sql_wrapping_type: {config.sql_wrapping_type}")
     except Exception as e:
         logger.error(f"Config 로드 실패: {e}")
+        sys.exit(1)
+
+    # sql_wrapping_type 검증
+    supported_types = ["mybatis_ccs", "mybatis_ccs_batch"]
+    if config.sql_wrapping_type not in supported_types:
+        logger.error(
+            f"이 스크립트는 {supported_types}만 지원합니다. "
+            f"현재 sql_wrapping_type: {config.sql_wrapping_type}"
+        )
         sys.exit(1)
 
     # table_access_info.json 로드

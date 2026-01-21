@@ -11,6 +11,9 @@ from modifier.context_generator.mybatis_context_generator import (
 from modifier.context_generator.mybatis_ccs_context_generator import (
     MybatisCCSContextGenerator,
 )
+from modifier.context_generator.mybatis_ccs_batch_context_generator import (
+    MybatisCCSBatchContextGenerator,
+)
 
 
 class ContextGeneratorFactory:
@@ -39,5 +42,8 @@ class ContextGeneratorFactory:
         elif config.sql_wrapping_type == "mybatis_ccs":
             # mybatis_ccs는 CCS 레이어명(ctl, svcimpl, dqm)을 사용
             return MybatisCCSContextGenerator(config, code_generator)
+        elif config.sql_wrapping_type == "mybatis_ccs_batch":
+            # mybatis_ccs_batch는 CCS 배치 레이어명(bat, batvo)을 사용
+            return MybatisCCSBatchContextGenerator(config, code_generator)
 
         return PerLayerContextGenerator(config, code_generator)
