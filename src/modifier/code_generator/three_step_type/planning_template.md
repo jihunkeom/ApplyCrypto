@@ -18,18 +18,38 @@ This project uses the **KSign** encryption framework with `ksignUtil`:
 - **Encryption**: `ksignUtil.ksignEnc(policyId, inputValue)` - Returns encrypted string
 - **Decryption**: `ksignUtil.ksignDec(policyId, inputValue)` - Returns decrypted string
 
-### Policy IDs (★ ONLY these 3 fields are encryption targets)
+### Policy ID Determination (★★★ CRITICAL ★★★)
 
-| Field Type                     | Policy ID | Column Name Patterns                                                                     |
-| ------------------------------ | --------- | ---------------------------------------------------------------------------------------- |
-| **Name (이름)**                | `"P017"`  | name, userName, user_name, fullName, firstName, lastName, custNm, CUST_NM, empNm, EMP_NM |
-| **Date of Birth (생년월일)**   | `"P018"`  | dob, dateOfBirth, birthDate, birthday, dayOfBirth, birthDt, BIRTH_DT                     |
-| **Resident Number (주민번호)** | `"P019"`  | jumin, juminNumber, ssn, residentNumber, juminNo, JUMIN_NO, residentNo                   |
+**IMPORTANT: Use the following priority order to determine the correct policy_id:**
 
-### Important: Only 3 Field Types
+1. **FIRST**: Check `table_info.columns[].encryption_code` - If provided, use it directly
+2. **SECOND**: Check `table_info.columns[].column_type` and map to policy_id:
+   - `column_type: "name"` → `"P017"`
+   - `column_type: "dob"` → `"P018"`
+   - `column_type: "rrn"` → `"P019"`
+3. **FALLBACK**: If neither is provided, use column name pattern matching (see table below)
 
-**ONLY encrypt/decrypt the above 3 field types (Name, DOB, Jumin).**
-Other fields like phone, address, gender, etc. are **NOT** encryption targets - do NOT add encryption for them.
+### Policy ID Reference Table
+
+| Field Type                     | column_type | Policy ID | Column Name Patterns (fallback only)                                                     |
+| ------------------------------ | ----------- | --------- | ---------------------------------------------------------------------------------------- |
+| **Name (이름)**                | `name`      | `"P017"`  | name, userName, user_name, fullName, firstName, lastName, custNm, CUST_NM, empNm, EMP_NM |
+| **Date of Birth (생년월일)**   | `dob`       | `"P018"`  | dob, dateOfBirth, birthDate, birthday, dayOfBirth, birthDt, BIRTH_DT                     |
+| **Resident Number (주민등록번호)** | `rrn`   | `"P019"`  | jumin, juminNumber, ssn, residentNumber, juminNo, JUMIN_NO, residentNo, rrn              |
+
+### ★★★ CRITICAL: All columns in table_info ARE encryption targets ★★★
+
+**Every column listed in `table_info.columns` has been explicitly configured by the user as an encryption target.**
+
+- **DO NOT skip** any column that appears in `table_info.columns`
+- `table_info.columns[].name` is the **DB column name** (e.g., `gvnm`)
+- The corresponding **Java field name/alias** (e.g., `aenam`) is identified in Phase 1's `mapping_info`
+- Even if the DB column name doesn't match common patterns, it IS an encryption target
+- Use `column_type` or `encryption_code` from table_info to determine the correct policy_id
+
+**Important Distinction:**
+- `table_info.columns`: Contains **DB column names** configured by user (e.g., `gvnm`)
+- `mapping_info.crypto_fields`: Contains **Java field mappings** analyzed in Phase 1 (e.g., `gvnm` → `aenam`)
 
 ---
 
@@ -43,11 +63,37 @@ This is the specific table that requires encryption/decryption modifications. An
 
 {{ table_info }}
 
+**table_info.columns Structure:**
+
+Each column in `table_info.columns` may contain:
+- `name`: Column name (always present)
+- `new_column`: Whether this is a new column (boolean)
+- `column_type`: Type of sensitive data - `"name"`, `"dob"`, or `"rrn"` (optional but authoritative)
+- `encryption_code`: Direct policy_id to use - e.g., `"P017"` (optional but highest priority)
+
+**Example:**
+```json
+{
+  "table_name": "TB_BANNER",
+  "columns": [
+    { "name": "gvnm", "new_column": false, "column_type": "name", "encryption_code": "P017" }
+  ]
+}
+```
+
 **Instructions:**
 
-1. Only analyze SQL queries that access the **target table** above
-2. Only analyze methods that are part of call chains leading to the **target table**
-3. Generate modification instructions ONLY for files involved in **target table** operations
+1. **ALL columns in table_info.columns ARE encryption targets** - do NOT skip any of them
+2. Use `encryption_code` or `column_type` to determine the correct policy_id
+3. Analyze queries from `mapping_info.queries[]` (NOT raw SQL - SQL was analyzed in Phase 1)
+4. Only analyze methods that are part of call chains in `call_stacks`
+5. Generate modification instructions ONLY for files in `source_files`
+
+**IMPORTANT: SQL queries are NOT provided directly in this phase.**
+Use `mapping_info` from Phase 1 which contains pre-analyzed query information including:
+- `query_id`: Which query is being called
+- `command_type`: SELECT/INSERT/UPDATE/DELETE
+- `crypto_fields`: Which fields need encryption/decryption with their Java field names
 
 ### Data Mapping Summary (★ Pre-analyzed from Phase 1)
 
@@ -69,19 +115,19 @@ The following `mapping_info` was extracted in Phase 1 and contains all SQL query
       "input_mapping": {
         "type_category": "VO | MAP | PRIMITIVE | NONE",
         "class_name": "Simple class name (e.g., UserVO, HashMap)",
-        "encryption_fields": [
+        "crypto_fields": [
           {
             "column_name": "DB column name",
             "java_field": "Java field name or Map key",
-            "getter": "getXxx (only for VO)",
-            "setter": "setXxx (only for VO)"
+            "getter": "getXxx (only for VO with provided VO file)",
+            "setter": "setXxx (only for VO with provided VO file)"
           }
         ]
       },
       "output_mapping": {
         "type_category": "VO | MAP | PRIMITIVE | NONE",
         "class_name": "Simple class name",
-        "encryption_fields": [...]
+        "crypto_fields": [...]
       }
     }
   ]
@@ -95,8 +141,9 @@ The following `mapping_info` was extracted in Phase 1 and contains all SQL query
 | `query_id` | Matches DAO/Mapper method name | Match with call chain to identify which query is called |
 | `command_type` | SQL command type | `SELECT` → DECRYPT results, `INSERT/UPDATE` → ENCRYPT inputs |
 | `sql_summary` | Query purpose description | Understand what the query does |
+| `crypto_fields` | Array of fields needing encryption | Contains `column_name`, `java_field`, and optional `getter/setter` |
 | `java_field` | Field name (VO) or Map key | Use for code generation (e.g., `vo.getJavaField()` or `map.get("java_field")`) |
-| `getter/setter` | Methods for VO types | Use directly in code_pattern_hint |
+| `getter/setter` | Methods for VO types (optional) | Use directly in code_pattern_hint; **only present when VO file was provided in Phase 1** |
 
 **Determining ENCRYPT/DECRYPT action:**
 
@@ -136,17 +183,21 @@ Call path from controller to SQL:
 **For each call chain in call_stacks**, analyze the data flow:
 
 1. Find the matching SQL query in `mapping_info.queries` by matching `query_id` with DAO method.
-2. Check `target_columns_usage` to understand how columns are used.
-3. Use `suggested_action` from `encryption_fields` to determine crypto action:
-   - `input_mapping.encryption_fields` with `suggested_action: "ENCRYPT"` → ENCRYPT before DAO call
-   - `output_mapping.encryption_fields` with `suggested_action: "DECRYPT"` → DECRYPT after DAO returns
+2. Use `command_type` and mapping location to determine crypto action:
+   - `INSERT/UPDATE` command with `input_mapping.crypto_fields` → **ENCRYPT** before DAO call
+   - `SELECT` command with `output_mapping.crypto_fields` → **DECRYPT** after DAO returns
+   - `SELECT` command with `input_mapping.crypto_fields` (WHERE clause) → **ENCRYPT** search param first
+3. Match `crypto_fields[].column_name` with `table_info.columns[].name` to verify encryption target.
 
 ### 2. Using Data Mapping (from mapping_info)
 
 **If Input/Output is a VO:**
 
-- Use `getter` and `setter` from `encryption_fields` directly
-- Example: `vo.setEmpNm(ksignUtil.ksignEnc("P017", vo.getEmpNm()));`
+- **With `getter`/`setter` provided**: Use them directly
+  - Example: `vo.setEmpNm(ksignUtil.ksignEnc("P017", vo.getEmpNm()));`
+- **Without `getter`/`setter`** (VO file wasn't provided in Phase 1): Infer from `java_field`
+  - Assume standard JavaBean conventions: `getXxx()` / `setXxx()`
+  - Example: `java_field: "empNm"` → `vo.getEmpNm()` / `vo.setEmpNm()`
 
 **If Input/Output is a Map:**
 
@@ -316,12 +367,13 @@ For `direction: "BIDIRECTIONAL"` (e.g., search with encrypted WHERE + decrypted 
 ### Important Notes
 
 1. **When action is SKIP**: Specify in `reason` which flow (flow_id) this refers to and why no modification is needed
-2. **target_properties**: Array of property names (strings). ONLY include name, DOB, or jumin fields. Do NOT include other fields.
+2. **target_properties**: Array of `java_field` names (strings) from `crypto_fields`. Use the Java field name, not DB column name.
 3. **insertion_point**: Describe specifically so code can be inserted in the next step
 4. **code_pattern_hint**:
-   - For VO: Use getter/setter from mapping_info (e.g., `vo.setEmpNm(ksignUtil.ksignEnc("P017", vo.getEmpNm()));`)
+   - For VO with getter/setter: Use them directly (e.g., `vo.setEmpNm(ksignUtil.ksignEnc("P017", vo.getEmpNm()));`)
+   - For VO without getter/setter: Infer from java_field (e.g., `java_field: "empNm"` → `vo.setEmpNm(...)`)
    - For Map: Use java_field as key (e.g., `map.put("ssn", ksignUtil.ksignDec("P019", (String)map.get("ssn")));`)
-5. **Use mapping_info**: Reference `java_field`, `getter`, `setter` from mapping_info for accurate code patterns
+5. **Use mapping_info.crypto_fields**: Reference `java_field`, and `getter`/`setter` (if present) for accurate code patterns
 
 ---
 
@@ -359,17 +411,27 @@ String userName = member.getUserNm();  // This is ALREADY plaintext!
 
 ### Special Case: SELECT with WHERE clause on sensitive columns
 
-When `target_columns_usage` shows a column used in WHERE:
+When `mapping_info` shows a sensitive column in BOTH `input_mapping` AND `output_mapping` for a SELECT:
 
 1. **First**: ENCRYPT the search parameter (to match encrypted data in DB)
 2. **Then**: Execute the query
 3. **Finally**: DECRYPT the result (to return plaintext to caller)
 
-Look for this pattern in mapping_info:
+**How to identify this pattern:**
 ```json
-"target_columns_usage": {
-  "jumin_no": "WHERE",  // → ENCRYPT the input parameter
-  "emp_nm": "SELECT"    // → DECRYPT the output
+{
+  "command_type": "SELECT",
+  "input_mapping": {
+    "crypto_fields": [
+      {"column_name": "jumin_no", "java_field": "searchJumin"}  // → ENCRYPT (WHERE clause)
+    ]
+  },
+  "output_mapping": {
+    "crypto_fields": [
+      {"column_name": "jumin_no", "java_field": "juminNo"},     // → DECRYPT (result)
+      {"column_name": "emp_nm", "java_field": "empNm"}          // → DECRYPT (result)
+    ]
+  }
 }
 ```
 
@@ -390,7 +452,7 @@ Look for this pattern in mapping_info:
       "input_mapping": {
         "type_category": "VO",
         "class_name": "EmpVO",
-        "encryption_fields": [
+        "crypto_fields": [
           {"column_name": "emp_nm", "java_field": "empNm", "getter": "getEmpNm", "setter": "setEmpNm"},
           {"column_name": "birth_dt", "java_field": "birthDt", "getter": "getBirthDt", "setter": "setBirthDt"},
           {"column_name": "jumin_no", "java_field": "juminNo", "getter": "getJuminNo", "setter": "setJuminNo"}
@@ -399,7 +461,7 @@ Look for this pattern in mapping_info:
       "output_mapping": {
         "type_category": "NONE",
         "class_name": null,
-        "encryption_fields": []
+        "crypto_fields": []
       }
     },
     {
@@ -409,12 +471,12 @@ Look for this pattern in mapping_info:
       "input_mapping": {
         "type_category": "PRIMITIVE",
         "class_name": "String",
-        "encryption_fields": []
+        "crypto_fields": []
       },
       "output_mapping": {
         "type_category": "VO",
         "class_name": "EmpVO",
-        "encryption_fields": [
+        "crypto_fields": [
           {"column_name": "emp_nm", "java_field": "empNm", "getter": "getEmpNm", "setter": "setEmpNm"},
           {"column_name": "birth_dt", "java_field": "birthDt", "getter": "getBirthDt", "setter": "setBirthDt"},
           {"column_name": "jumin_no", "java_field": "juminNo", "getter": "getJuminNo", "setter": "setJuminNo"}
@@ -485,7 +547,7 @@ Look for this pattern in mapping_info:
   "output_mapping": {
     "type_category": "MAP",
     "class_name": "HashMap",
-    "encryption_fields": [
+    "crypto_fields": [
       {"column_name": "jumin_no", "java_field": "ssn"}
     ]
   }
@@ -724,14 +786,14 @@ resultMap.put("ssn", ksignUtil.ksignDec("P019", (String)resultMap.get("ssn")));
   "input_mapping": {
     "type_category": "MAP",
     "class_name": "HashMap",
-    "encryption_fields": [
+    "crypto_fields": [
       {"column_name": "cust_nm", "java_field": "custNm"}
     ]
   },
   "output_mapping": {
     "type_category": "VO",
     "class_name": "Customer",
-    "encryption_fields": [
+    "crypto_fields": [
       {"column_name": "cust_nm", "java_field": "custNm", "getter": "getCustNm", "setter": "setCustNm"},
       {"column_name": "birth_dt", "java_field": "birthDt", "getter": "getBirthDt", "setter": "setBirthDt"}
     ]
@@ -793,7 +855,7 @@ resultMap.put("ssn", ksignUtil.ksignDec("P019", (String)resultMap.get("ssn")));
   "input_mapping": {
     "type_category": "MAP",
     "class_name": "HashMap",
-    "encryption_fields": [
+    "crypto_fields": [
       {"column_name": "cust_nm", "java_field": "custNm"},
       {"column_name": "birth_dt", "java_field": "newBirthDt"}
     ]
@@ -841,7 +903,7 @@ Based on the information above:
 
 1. **For each call chain in call_stacks**, find the matching query in mapping_info
 2. **Use `command_type`** and mapping location to determine ENCRYPT/DECRYPT action
-3. **Use `java_field`, `getter`, `setter`** from encryption_fields to generate accurate code patterns
+3. **Use `java_field`, `getter`, `setter`** from crypto_fields to generate accurate code patterns
 4. **Output modification instructions** for each flow in JSON format
 5. **SKIP** flows that don't involve the target table's encryption columns
 

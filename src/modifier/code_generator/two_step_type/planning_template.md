@@ -17,23 +17,69 @@ This project uses the **KSign** encryption framework with `ksignUtil`:
 - **Encryption**: `ksignUtil.ksignEnc(policyId, inputValue)` - Returns encrypted string
 - **Decryption**: `ksignUtil.ksignDec(policyId, inputValue)` - Returns decrypted string
 
-### Policy IDs (★ ONLY these 3 fields are encryption targets)
-| Field Type | Policy ID | Column Name Patterns |
-|------------|-----------|---------------------|
-| **Name (이름)** | `"P017"` | name, userName, user_name, fullName, firstName, lastName, custNm, CUST_NM, empNm, EMP_NM |
-| **Date of Birth (생년월일)** | `"P018"` | dob, dateOfBirth, birthDate, birthday, dayOfBirth, birthDt, BIRTH_DT |
-| **Resident Number (주민번호)** | `"P019"` | jumin, juminNumber, ssn, residentNumber, juminNo, JUMIN_NO, residentNo |
+### Policy ID Determination (★★★ CRITICAL ★★★)
 
-### Important: Only 3 Field Types
-**ONLY encrypt/decrypt the above 3 field types (Name, DOB, Jumin).**
-Other fields like phone, address, gender, etc. are **NOT** encryption targets - do NOT add encryption for them.
+**IMPORTANT: Use the following priority order to determine the correct policy_id:**
+
+1. **FIRST**: Check `table_info.columns[].encryption_code` - If provided, use it directly
+2. **SECOND**: Check `table_info.columns[].column_type` and map to policy_id:
+   - `column_type: "name"` → `"P017"`
+   - `column_type: "dob"` → `"P018"`
+   - `column_type: "rrn"` → `"P019"`
+3. **FALLBACK**: If neither is provided, use column name pattern matching (see table below)
+
+### Policy ID Reference Table
+
+| Field Type                     | column_type | Policy ID | Column Name Patterns (fallback only)                                                     |
+| ------------------------------ | ----------- | --------- | ---------------------------------------------------------------------------------------- |
+| **Name (이름)**                | `name`      | `"P017"`  | name, userName, user_name, fullName, firstName, lastName, custNm, CUST_NM, empNm, EMP_NM |
+| **Date of Birth (생년월일)**   | `dob`       | `"P018"`  | dob, dateOfBirth, birthDate, birthday, dayOfBirth, birthDt, BIRTH_DT                     |
+| **Resident Number (주민등록번호)** | `rrn`   | `"P019"`  | jumin, juminNumber, ssn, residentNumber, juminNo, JUMIN_NO, residentNo, rrn              |
+
+### ★★★ CRITICAL: All columns in table_info ARE encryption targets ★★★
+
+**Every column listed in `table_info.columns` has been explicitly configured by the user as an encryption target.**
+
+- **DO NOT skip** any column that appears in `table_info.columns`
+- `table_info.columns[].name` is the **DB column name** (e.g., `gvnm`)
+- The corresponding **Java field name** may differ due to aliasing in SQL or VO mapping
+- Even if the DB column name doesn't match common patterns, it IS an encryption target
+- Use `column_type` or `encryption_code` from table_info to determine the correct policy_id
 
 ---
 
 ## Analysis Target Information
 
-### Target Table/Column Information for Encryption
+### ★★★ Target Table/Column Information (CRITICAL) ★★★
+
+**IMPORTANT: Focus ONLY on the target table specified below.**
+
 {{ table_info }}
+
+**table_info.columns Structure:**
+
+Each column in `table_info.columns` may contain:
+- `name`: Column name (always present)
+- `new_column`: Whether this is a new column (boolean)
+- `column_type`: Type of sensitive data - `"name"`, `"dob"`, or `"rrn"` (optional but authoritative)
+- `encryption_code`: Direct policy_id to use - e.g., `"P017"` (optional but highest priority)
+
+**Example:**
+```json
+{
+  "table_name": "TB_BANNER",
+  "columns": [
+    { "name": "gvnm", "new_column": false, "column_type": "name", "encryption_code": "P017" }
+  ]
+}
+```
+
+**Instructions:**
+
+1. **ALL columns in table_info.columns ARE encryption targets** - do NOT skip any of them
+2. Use `encryption_code` or `column_type` to determine the correct policy_id
+3. Only analyze SQL queries that access the **target table** above
+4. Generate modification instructions ONLY for files involved in **target table** operations
 
 ### SQL Query Analysis (★ Core Data Flow Information)
 The following are actual SQL queries accessing this table. **Query type (SELECT/INSERT/UPDATE/DELETE)** determines encryption/decryption location:
@@ -218,9 +264,12 @@ For `direction: "BIDIRECTIONAL"` (e.g., search with encrypted WHERE + decrypted 
 ### Important Notes
 
 1. **When action is SKIP**: Specify in `reason` which flow (flow_id) this refers to and why no modification is needed
-2. **target_properties**: Array of property names (strings). ONLY include name, DOB, or jumin fields. Do NOT include other fields.
+2. **target_properties**: Array of Java property names (strings) corresponding to sensitive columns. Use the Java field name (e.g., `empNm`), not DB column name (e.g., `emp_nm`).
 3. **insertion_point**: Describe specifically so code can be inserted in the next step
-4. **code_pattern_hint**: Use `ksignUtil.ksignEnc(policyId, value)` for encryption, `ksignUtil.ksignDec(policyId, value)` for decryption
+4. **code_pattern_hint**:
+   - For VO: `vo.setEmpNm(ksignUtil.ksignEnc("P017", vo.getEmpNm()));`
+   - For Map: `map.put("key", ksignUtil.ksignEnc("P017", (String)map.get("key")));`
+5. **Policy ID determination**: Use `encryption_code` > `column_type` > column name pattern (in priority order)
 
 ---
 

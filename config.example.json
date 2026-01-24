@@ -13,12 +13,26 @@
     {
       "table_name": "tb_employee",
       "columns": [
-        { "name": "emp_nm", "new_column": false },
-        { "name": "birth_dt", "new_column": false },
-        { "name": "jumin_no", "new_column": false }
+        { "name": "emp_nm", "new_column": false, "column_type": "name", "encryption_code": "P017" },
+        { "name": "birth_dt", "new_column": false, "column_type": "dob", "encryption_code": "P018" },
+        { "name": "jumin_no", "new_column": false, "column_type": "rrn", "encryption_code": "P019" }
       ]
     }
   ],
+
+  "_comment_column_fields": "=== Column Field Options ===",
+  "_column_fields": {
+    "name": "Column name in database (required)",
+    "new_column": "Whether this is a newly added encryption column (optional, default: false)",
+    "column_type": "Type of sensitive data: 'name', 'dob', 'rrn', 'sex' (optional but recommended for non-standard column names)",
+    "encryption_code": "Direct policy ID to use: 'P017' (name), 'P018' (dob), 'P019' (rrn) (optional, highest priority)"
+  },
+  "_column_type_mapping": {
+    "name": "이름 필드 → P017",
+    "dob": "생년월일 필드 → P018",
+    "rrn": "주민등록번호 필드 → P019",
+    "sex": "성별 필드 (별도 처리)"
+  },
 
   "exclude_dirs": ["test", "generated", "src/test"],
   "exclude_files": [

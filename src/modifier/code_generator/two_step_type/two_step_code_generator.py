@@ -164,6 +164,9 @@ class TwoStepCodeGenerator(BaseMultiStepCodeGenerator):
         )
         logger.debug(f"Planning 프롬프트 길이: {len(planning_prompt)} chars")
 
+        # 프롬프트 저장 (LLM 호출 직전)
+        self._save_prompt_to_file(planning_prompt, modification_context, "planning")
+
         # LLM 호출
         planning_response = self.planning_provider.call(planning_prompt)
         tokens_used = planning_response.get("tokens_used", 0)

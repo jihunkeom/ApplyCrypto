@@ -79,11 +79,17 @@ class DBAccessAnalyzer:
                     columns_set.add(col_name)
                     column_info_dict[col_name] = {"new_column": False}
                 else:
-                    # 객체 형식: ColumnDetail(name="column_name", new_column=True, ...)
+                    # 객체 형식: ColumnDetail(name="column_name", new_column=True, column_type="name", encryption_code="P017")
                     col_name = col.name.lower()
                     if col_name:
                         columns_set.add(col_name)
-                        column_info_dict[col_name] = {"new_column": col.new_column}
+                        col_detail = {"new_column": col.new_column}
+                        # column_type과 encryption_code가 있으면 포함
+                        if col.column_type:
+                            col_detail["column_type"] = col.column_type
+                        if col.encryption_code:
+                            col_detail["encryption_code"] = col.encryption_code
+                        column_info_dict[col_name] = col_detail
 
             self.table_column_map[table_name] = columns_set
             self.table_column_info[table_name] = column_info_dict
@@ -243,11 +249,18 @@ class DBAccessAnalyzer:
         table_lower = table_name.lower()
         column_info_dict = self.table_column_info.get(table_lower, {})
 
-        # config.json에 설정된 모든 칼럼을 포함
+        # config.json에 설정된 모든 칼럼을 포함 (column_type, encryption_code 포함)
         for col_name, col_info in sorted(column_info_dict.items()):
-            columns_list.append(
-                {"name": col_name, "new_column": col_info.get("new_column", False)}
-            )
+            col_entry = {
+                "name": col_name,
+                "new_column": col_info.get("new_column", False),
+            }
+            # column_type과 encryption_code가 있으면 포함
+            if "column_type" in col_info:
+                col_entry["column_type"] = col_info["column_type"]
+            if "encryption_code" in col_info:
+                col_entry["encryption_code"] = col_info["encryption_code"]
+            columns_list.append(col_entry)
 
         # layer_files를 딕셔너리로 변환 (Set -> List)
         layer_files_dict = {

@@ -126,9 +126,7 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         """마지막 Planning 단계의 이름 반환"""
         return "planning"
 
-    def _get_planning_reasons(
-        self, planning_result: Dict[str, Any]
-    ) -> Dict[str, str]:
+    def _get_planning_reasons(self, planning_result: Dict[str, Any]) -> Dict[str, str]:
         """Planning 결과에서 파일명 -> reason 매핑 추출"""
         planning_reasons = {}
         for instr in planning_result.get("modification_instructions", []):
@@ -224,6 +222,9 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         )
         logger.debug(f"Query Analysis 프롬프트 길이: {len(prompt)} chars")
 
+        # 프롬프트 저장 (LLM 호출 직전)
+        self._save_prompt_to_file(prompt, modification_context, "data_mapping")
+
         # LLM 호출
         response = self.analysis_provider.call(prompt)
         tokens_used = response.get("tokens_used", 0)
@@ -240,13 +241,6 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
             phase_name="query_analysis",
             result=mapping_info,
             tokens_used=tokens_used,
-        )
-
-        # 요약 로깅
-        summary = mapping_info.get("summary", {})
-        logger.info(
-            f"매핑 분석 결과: {summary.get('total_queries', 0)}개 쿼리 분석, "
-            f"{summary.get('encryption_needed_count', 0)}개 암호화 대상 식별"
         )
 
         return mapping_info, tokens_used
@@ -308,6 +302,9 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
             modification_context, table_access_info, mapping_info
         )
         logger.debug(f"Planning 프롬프트 길이: {len(prompt)} chars")
+
+        # 프롬프트 저장 (LLM 호출 직전)
+        self._save_prompt_to_file(prompt, modification_context, "planning")
 
         # LLM 호출
         response = self.analysis_provider.call(prompt)

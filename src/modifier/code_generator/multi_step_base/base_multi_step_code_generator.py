@@ -104,6 +104,10 @@ class BaseMultiStepCodeGenerator(BaseCodeGenerator):
         )
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # 프롬프트 저장 디렉토리 초기화 (ApplyCrypto 실행 디렉토리 기준)
+        self.prompt_results_dir = Path("./prompt_results")
+        self.prompt_results_dir.mkdir(parents=True, exist_ok=True)
+
     # ========== 추상 메서드 (서브클래스에서 구현) ==========
 
     @abstractmethod
@@ -829,6 +833,48 @@ class BaseMultiStepCodeGenerator(BaseCodeGenerator):
                 f"자동 복구를 시도했으나 실패했습니다."
             )
 
+    # ========== 프롬프트 저장 ==========
+
+    def _save_prompt_to_file(
+        self,
+        prompt: str,
+        modification_context: ModificationContext,
+        phase_name: str,
+    ) -> Path:
+        """
+        LLM에 전달되는 프롬프트를 .md 파일로 저장합니다.
+
+        파일명 형식: {first_file_name}_{timestamp}_{phase_name}.md
+
+        Args:
+            prompt: LLM에 전달되는 프롬프트
+            modification_context: 수정 컨텍스트
+            phase_name: 단계 이름 (data_mapping, planning, execution)
+
+        Returns:
+            Path: 저장된 파일 경로
+        """
+        # 첫 번째 파일 이름 추출
+        first_file_name = "unknown"
+        if modification_context.file_paths:
+            first_file_path = Path(modification_context.file_paths[0])
+            first_file_name = first_file_path.stem
+            first_file_name = re.sub(r"[^\w\-]", "_", first_file_name)
+
+        # 타임스탬프
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        # 파일명 생성
+        filename = f"{first_file_name}_{timestamp}_{phase_name}.md"
+        output_path = self.prompt_results_dir / filename
+
+        # 프롬프트 저장
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(prompt)
+
+        logger.info(f"프롬프트 저장됨: {output_path}")
+        return output_path
+
     # ========== 세션 및 결과 관리 ==========
 
     def _create_session_dir(
@@ -1119,6 +1165,9 @@ class BaseMultiStepCodeGenerator(BaseCodeGenerator):
         )
         logger.debug(f"Execution 프롬프트 길이: {len(prompt)} chars")
         logger.debug(f"파일 인덱스 매핑: {list(index_to_path.keys())}")
+
+        # 프롬프트 저장 (LLM 호출 직전)
+        self._save_prompt_to_file(prompt, modification_context, "execution")
 
         # LLM 호출
         response = self._get_execution_provider().call(prompt)

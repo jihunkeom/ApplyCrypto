@@ -19,6 +19,17 @@ Your task is to extract **query-based data mapping information** from the provid
 
 {{ table_info }}
 
+**table_info.columns Structure:**
+
+Each column in `table_info.columns` may contain:
+- `name`: Column name (always present) - **this is the DB column name to match in SQL**
+- `new_column`: Whether this is a new column (boolean)
+- `column_type`: Type of sensitive data - `"name"`, `"dob"`, or `"rrn"` (optional)
+- `encryption_code`: Direct policy_id - e.g., `"P017"` (optional)
+
+**CRITICAL: Every column listed in table_info.columns IS an encryption target.**
+Do NOT skip any column. Even if the column name seems unusual (e.g., `gvnm`, `aenam`), it must be included in `crypto_fields`.
+
 ---
 
 ## VO Files (Context)

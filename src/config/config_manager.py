@@ -21,11 +21,11 @@ class ConfigurationError(Exception):
 class ColumnDetail(BaseModel):
     name: str = Field(..., description="컬럼 이름")
     new_column: Optional[bool] = Field(None, description="새로운 컬럼 여부")
-    column_type: Optional[Literal["dob", "ssn", "name", "sex"]] = Field(
+    column_type: Optional[Literal["dob", "rrn", "name", "sex"]] = Field(
         None,
-        description="컬럼 타입 (dob: 생년월일, ssn: 주민번호, name: 이름, sex: 성별)",
+        description="컬럼 타입 (dob: 생년월일, rrn: 주민등록번호, name: 이름, sex: 성별)",
     )
-    encryption_code: Optional[str] = Field(None, description="암호화 코드")
+    encryption_code: Optional[str] = Field(None, description="암호화 코드 (예: P017, P018, P019)")
 
 
 class AccessTable(BaseModel):
