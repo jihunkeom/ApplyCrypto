@@ -75,6 +75,7 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         # 템플릿 로드
         template_dir = Path(__file__).parent
         self.data_mapping_template_path = template_dir / "data_mapping_template.md"
+        self.data_mapping_template_ccs_path = template_dir / "data_mapping_template_ccs.md"
         self.planning_template_path = template_dir / "planning_template.md"
         self.execution_template_path = template_dir / "execution_template.md"
 
@@ -85,6 +86,13 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         ]:
             if not template_path.exists():
                 raise FileNotFoundError(f"템플릿을 찾을 수 없습니다: {template_path}")
+
+        # CCS 템플릿은 선택적 (없어도 에러 아님)
+        if not self.data_mapping_template_ccs_path.exists():
+            logger.warning(
+                f"CCS 템플릿이 없습니다: {self.data_mapping_template_ccs_path}. "
+                "CCS 프로젝트에서는 일반 템플릿을 사용합니다."
+            )
 
         # BaseContextGenerator.create_batches()에서 토큰 계산을 위해 사용하는 속성
         self.template_path = self.planning_template_path
@@ -205,6 +213,281 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         template_str = self._load_template(self.data_mapping_template_path)
         return self._render_template(template_str, variables)
 
+    # ========== CCS 전용 메서드: Phase 1 (resultMap 기반 필드 매핑) ==========
+
+    def _is_ccs_project(self) -> bool:
+        """
+        CCS 프로젝트 여부를 판단합니다.
+
+        Returns:
+            bool: CCS 프로젝트이면 True
+        """
+        return self.config.sql_wrapping_type in ("mybatis_ccs", "mybatis_ccs_batch")
+
+    def _extract_field_mappings_from_sql_queries(
+        self,
+        table_access_info: TableAccessInfo,
+        file_paths: list,
+    ) -> Dict[str, Any]:
+        """
+        SQL 쿼리에서 필드 매핑 정보를 추출합니다.
+
+        DQM.xml의 resultMap에서 추출한 컬럼↔필드 매핑과
+        SQL 내 #{fieldName} 패턴을 사용합니다.
+
+        Args:
+            table_access_info: 테이블 접근 정보
+            file_paths: 수정 대상 파일 경로 목록
+
+        Returns:
+            Dict with structure:
+            {
+                "select_mappings": [
+                    {
+                        "query_id": "selectEmp",
+                        "result_type": "com.example.EmpDVO",
+                        "result_map": "selectEmp-result",
+                        "mappings": [
+                            {"java_field": "empNm", "db_column": "EMP_NM"},
+                            ...
+                        ]
+                    }
+                ],
+                "write_mappings": [
+                    {
+                        "query_id": "insertEmp",
+                        "query_type": "INSERT",
+                        "parameter_type": "com.example.EmpDVO",
+                        "fields": ["empNm", "birthDt", ...]
+                    }
+                ]
+            }
+        """
+        select_mappings = []
+        write_mappings = []
+
+        for sql_query in table_access_info.sql_queries:
+            strategy_specific = sql_query.get("strategy_specific", {})
+            query_type = sql_query.get("query_type", "").upper()
+            query_id = sql_query.get("id", "")
+
+            if query_type == "SELECT":
+                # resultMap에서 추출한 필드 매핑
+                result_field_mappings = strategy_specific.get(
+                    "result_field_mappings", []
+                )
+                if result_field_mappings:
+                    select_mappings.append(
+                        {
+                            "query_id": query_id,
+                            "result_type": strategy_specific.get("result_type", ""),
+                            "result_map": strategy_specific.get("result_map", ""),
+                            "mappings": [
+                                {"java_field": fm[0], "db_column": fm[1]}
+                                for fm in result_field_mappings
+                            ],
+                        }
+                    )
+
+            elif query_type in ("INSERT", "UPDATE"):
+                # SQL 내 #{fieldName} 패턴에서 추출한 파라미터 필드
+                param_fields = strategy_specific.get("parameter_field_mappings", [])
+                if param_fields:
+                    write_mappings.append(
+                        {
+                            "query_id": query_id,
+                            "query_type": query_type,
+                            "parameter_type": strategy_specific.get(
+                                "parameter_type", ""
+                            ),
+                            "fields": param_fields,
+                        }
+                    )
+
+        logger.info(
+            f"CCS 필드 매핑 추출 완료: SELECT {len(select_mappings)}개, "
+            f"INSERT/UPDATE {len(write_mappings)}개"
+        )
+
+        return {
+            "select_mappings": select_mappings,
+            "write_mappings": write_mappings,
+        }
+
+    def _format_ccs_sql_with_relevant_mappings(
+        self,
+        table_access_info: TableAccessInfo,
+        file_paths: list,
+        target_columns: list,
+    ) -> str:
+        """
+        CCS용 SQL 쿼리와 관련 필드 매핑을 함께 포맷팅합니다.
+
+        각 쿼리 밑에 target_columns에 해당하는 필드 매핑만 자연어로 설명합니다.
+
+        Args:
+            table_access_info: 테이블 접근 정보
+            file_paths: 파일 경로 리스트 (필터링용)
+            target_columns: 관심 대상 컬럼명 리스트
+
+        Returns:
+            str: 포맷팅된 SQL 쿼리 + 매핑 정보 문자열
+        """
+        from pathlib import Path
+
+        # target_columns를 대문자로 정규화 (비교용)
+        target_cols_upper = {col.upper() for col in target_columns}
+
+        # 파일 경로에서 클래스명 추출 (필터링용)
+        file_class_names = set()
+        if file_paths:
+            for file_path in file_paths:
+                class_name = Path(file_path).stem
+                file_class_names.add(class_name)
+
+        output_parts = []
+        query_num = 0
+
+        for sql_query in table_access_info.sql_queries:
+            # 파일 경로가 지정된 경우 관련 SQL만 필터링
+            if file_paths and file_class_names:
+                call_stacks = sql_query.get("call_stacks", [])
+                is_relevant = False
+                for call_stack in call_stacks:
+                    if not isinstance(call_stack, list):
+                        continue
+                    for method_sig in call_stack:
+                        if not isinstance(method_sig, str):
+                            continue
+                        method_class_name = (
+                            method_sig.split(".")[0] if "." in method_sig else method_sig
+                        )
+                        if method_class_name in file_class_names:
+                            is_relevant = True
+                            break
+                    if is_relevant:
+                        break
+                if not is_relevant:
+                    continue
+
+            query_num += 1
+            query_id = sql_query.get("id", "unknown")
+            query_type = sql_query.get("query_type", "SELECT")
+            sql_text = sql_query.get("sql", "")
+            strategy_specific = sql_query.get("strategy_specific", {})
+
+            # 쿼리 헤더
+            output_parts.append(f"### Query {query_num}: {query_id} ({query_type})")
+            output_parts.append("")
+
+            # SQL 텍스트 (strategy_specific 제외한 간결한 형태)
+            output_parts.append("**SQL:**")
+            output_parts.append("```sql")
+            output_parts.append(sql_text.strip())
+            output_parts.append("```")
+            output_parts.append("")
+
+            # 메타 정보
+            param_type = strategy_specific.get("parameter_type", "")
+            result_type = strategy_specific.get("result_type", "")
+            if param_type:
+                output_parts.append(f"- **Parameter Type:** `{param_type}`")
+            if result_type:
+                output_parts.append(f"- **Result Type:** `{result_type}`")
+            output_parts.append("")
+
+            # 관련 필드 매핑 (target_columns만 필터링)
+            relevant_mappings = []
+
+            if query_type == "SELECT":
+                # resultMap에서 추출한 필드 매핑
+                result_field_mappings = strategy_specific.get("result_field_mappings", [])
+                for java_field, db_column in result_field_mappings:
+                    if db_column.upper() in target_cols_upper:
+                        relevant_mappings.append(
+                            f"- Column `{db_column}` → Java field `{java_field}`"
+                        )
+
+            elif query_type in ("INSERT", "UPDATE"):
+                # SQL 내 #{fieldName} 패턴
+                param_fields = strategy_specific.get("parameter_field_mappings", [])
+                # INSERT/UPDATE는 SQL에서 컬럼명을 직접 추출해야 함
+                # 여기서는 parameter_fields만 제공하고, 컬럼 매칭은 LLM에게 위임
+                if param_fields:
+                    # 간단히 모든 파라미터 필드 나열 (LLM이 컬럼과 매칭)
+                    for field in param_fields:
+                        relevant_mappings.append(
+                            f"- Parameter `#{{{field}}}` → Java field `{field}`"
+                        )
+
+            if relevant_mappings:
+                output_parts.append(
+                    f"**Relevant Field Mappings for Target Columns ({', '.join(target_columns)}):**"
+                )
+                output_parts.extend(relevant_mappings)
+            else:
+                output_parts.append(
+                    "**Field Mappings:** No direct mapping found for target columns. "
+                    "Infer from SQL parameter names or use camelCase conversion."
+                )
+
+            output_parts.append("")
+            output_parts.append("---")
+            output_parts.append("")
+
+        if query_num == 0:
+            return "No relevant SQL queries found for this context."
+
+        logger.info(f"CCS SQL 쿼리 포맷팅 완료: {query_num}개 쿼리")
+        return "\n".join(output_parts)
+
+    def _create_ccs_data_mapping_prompt(
+        self,
+        modification_context: ModificationContext,
+        table_access_info: TableAccessInfo,
+    ) -> str:
+        """
+        CCS 전용 Phase 1 프롬프트를 생성합니다.
+
+        VO 파일 전체 대신 DQM.xml에서 추출한 필드 매핑 정보를
+        각 SQL 쿼리와 함께 컴팩트하게 제공합니다.
+
+        Args:
+            modification_context: 수정 컨텍스트
+            table_access_info: 테이블 접근 정보
+
+        Returns:
+            str: 렌더링된 프롬프트
+        """
+        # 테이블/칼럼 정보
+        table_info = {
+            "table_name": modification_context.table_name,
+            "columns": modification_context.columns,
+        }
+        table_info_str = json.dumps(table_info, indent=2, ensure_ascii=False)
+
+        # target columns 추출 (관심 대상 컬럼명 리스트)
+        target_columns = [col.get("name", "") for col in modification_context.columns]
+
+        # SQL 쿼리 + 관련 필드 매핑을 함께 포맷팅 (중복 제거, 컴팩트화)
+        sql_queries_with_mappings = self._format_ccs_sql_with_relevant_mappings(
+            table_access_info, modification_context.file_paths, target_columns
+        )
+
+        variables = {
+            "table_info": table_info_str,
+            "sql_queries_with_mappings": sql_queries_with_mappings,
+        }
+
+        # CCS 템플릿 사용 (없으면 일반 템플릿 사용)
+        if self.data_mapping_template_ccs_path.exists():
+            template_str = self._load_template(self.data_mapping_template_ccs_path)
+        else:
+            logger.warning("CCS 템플릿이 없어 일반 템플릿을 사용합니다.")
+            template_str = self._load_template(self.data_mapping_template_path)
+
+        return self._render_template(template_str, variables)
+
     def _execute_data_mapping_phase(
         self,
         session_dir: Path,
@@ -214,12 +497,21 @@ class ThreeStepCodeGenerator(BaseMultiStepCodeGenerator):
         """Step 1 (Query Analysis): VO 파일과 SQL 쿼리에서 데이터 매핑 정보를 추출합니다."""
         logger.info("-" * 40)
         logger.info("[Step 1] Query Analysis 시작...")
-        logger.info(f"VO 파일 수: {len(modification_context.context_files or [])}")
 
-        # 프롬프트 생성
-        prompt = self._create_data_mapping_prompt(
-            modification_context, table_access_info
-        )
+        # CCS 프로젝트 여부에 따라 프롬프트 생성 방식 분기
+        if self._is_ccs_project():
+            logger.info(
+                "CCS 프로젝트 감지: resultMap 기반 필드 매핑을 사용합니다."
+            )
+            prompt = self._create_ccs_data_mapping_prompt(
+                modification_context, table_access_info
+            )
+        else:
+            logger.info(f"VO 파일 수: {len(modification_context.context_files or [])}")
+            prompt = self._create_data_mapping_prompt(
+                modification_context, table_access_info
+            )
+
         logger.debug(f"Query Analysis 프롬프트 길이: {len(prompt)} chars")
 
         # 프롬프트 저장 (LLM 호출 직전)

@@ -1,21 +1,22 @@
-# Data Mapping Extraction (Phase 1) - CCS Version
+# Data Mapping Extraction (Phase 1) - CCS Version (resultMap 기반)
 
 ## Role
 
-You are an expert in analyzing Java VO (Value Object) classes, Maps, and SQL queries.
-Your task is to extract **query-based data mapping information** from the provided SQL queries and VO files.
+You are an expert in analyzing DQM.xml resultMap mappings, Java VO classes, and SQL queries.
+Your task is to extract **query-based data mapping information** from the provided SQL queries.
 
 **Important**:
 
 - This is an **extraction and analysis** task only
 - You are NOT modifying any code
+- Field mappings from `resultMap` tags are already provided with each query - use them directly
 - You are providing structured information to help the next phase (Planning) understand how data flows between Java and DB
 
 ---
 
 ## ★★★ Target Table Information (CRITICAL) ★★★
 
-**IMPORTANT: Focus ONLY on the target table specified below.**
+**IMPORTANT: Focus ONLY on the target table and columns specified below.**
 
 {{ table_info }}
 
@@ -32,15 +33,11 @@ Do NOT skip any column. Even if the column name seems unusual (e.g., `gvnm`, `ae
 
 ---
 
-## VO Files (Context)
+## SQL Queries with Relevant Field Mappings
 
-{{ vo_files }}
+Below are the SQL queries to analyze. Each query includes **only the relevant field mappings** for the target columns listed above. Use these mappings to determine the exact Java field names.
 
----
-
-## SQL Queries to Analyze
-
-{{ sql_queries }}
+{{ sql_queries_with_mappings }}
 
 ---
 
@@ -105,7 +102,7 @@ Do NOT skip any column. Even if the column name seems unusual (e.g., `gvnm`, `ae
 
 ### 1. Identify Input/Output Types
 
-- **Read `strategy_description`**: Look for `Parameter Type` and `Result Type`
+- **Look for `Parameter Type` and `Result Type`** listed under each query
 - **class_name**: Always use simple class name (e.g., `UserVO` not `com.example.UserVO`, `HashMap` not `java.util.HashMap`)
 
 ### 2. Handle Map Types
@@ -124,25 +121,22 @@ SELECT jumin_no AS ssn, emp_nm FROM TB_EMP WHERE name = #{searchName}
 - Input: `java_field: "searchName"` (from `#{searchName}`)
 - Output: `jumin_no` → `java_field: "ssn"` (alias), `emp_nm` → `java_field: "emp_nm"` (no alias)
 
-### 3. Handle VO Types (★ CRITICAL: getter/setter rules ★)
+### 3. Handle VO Types (★ Use inline field mappings ★)
 
-**When VO file IS provided in context:**
-- Use actual field names from VO class
-- Include `getter` and `setter`
+**Each query includes "Relevant Field Mappings for Target Columns" section directly.**
 
-```json
-{
-  "column_name": "emp_nm",
-  "java_field": "empNm",
-  "getter": "getEmpNm",
-  "setter": "setEmpNm"
-}
+**When inline field mappings are provided:**
+- Look for the "Relevant Field Mappings for Target Columns" section under each query
+- Use the exact `java_field` from `Column X → Java field Y` mapping
+- **Do NOT include `getter` and `setter`** (resultMap provides the mapping directly)
+
+**Example:** If a query shows:
+```
+**Relevant Field Mappings for Target Columns (EMP_NM):**
+- Column `EMP_NM` → Java field `empNm`
 ```
 
-**When VO file is NOT provided in context:**
-- Infer `java_field` by converting column name to camelCase
-- **Do NOT include `getter` and `setter`** (omit these fields entirely)
-
+Then output:
 ```json
 {
   "column_name": "EMP_NM",
@@ -150,7 +144,8 @@ SELECT jumin_no AS ssn, emp_nm FROM TB_EMP WHERE name = #{searchName}
 }
 ```
 
-**Column to camelCase conversion:**
+**When inline field mappings are NOT available (fallback):**
+- Infer `java_field` by converting column name to camelCase
 - `snake_case` → `camelCase`: `emp_nm` → `empNm`
 - `UPPER_SNAKE` → `camelCase`: `EMP_NM` → `empNm`, `BIRTH_DT` → `birthDt`
 
@@ -164,19 +159,28 @@ When SQL uses `SELECT *` or `SELECT t.*`:
 
 **For java_field:**
 - Map result type: use column name as-is
-- VO result type with VO provided: use VO field names + getter/setter
-- VO result type without VO provided: use camelCase conversion, **NO getter/setter**
+- VO result type with inline mappings: use the `java_field` from "Relevant Field Mappings" section
+- VO result type without mappings: infer using camelCase conversion
 
 ---
 
 ## Complete Examples
 
-### Example 1: SELECT with VO result (VO file provided)
+### Example 1: SELECT with VO result (inline mapping provided)
 
-**Input:**
-- Query: `SELECT jumin_no, emp_nm FROM TB_EMP WHERE emp_id = #{empId}`
-- Result Type: `com.example.vo.EmpVO`
-- VO file `EmpVO.java` is provided in context with fields: `juminNo`, `empNm`
+**Input (query with inline mappings):**
+```
+### Query 1: selectEmp (SELECT)
+**SQL:**
+SELECT jumin_no, emp_nm FROM TB_EMP WHERE emp_id = #{empId}
+
+- **Parameter Type:** `String`
+- **Result Type:** `com.example.vo.EmpVO`
+
+**Relevant Field Mappings for Target Columns (JUMIN_NO, EMP_NM):**
+- Column `JUMIN_NO` → Java field `juminNo`
+- Column `EMP_NM` → Java field `empNm`
+```
 
 **Output:**
 ```json
@@ -195,14 +199,16 @@ When SQL uses `SELECT *` or `SELECT t.*`:
         "type_category": "VO",
         "class_name": "EmpVO",
         "crypto_fields": [
-          { "column_name": "jumin_no", "java_field": "juminNo", "getter": "getJuminNo", "setter": "setJuminNo" },
-          { "column_name": "emp_nm", "java_field": "empNm", "getter": "getEmpNm", "setter": "setEmpNm" }
+          { "column_name": "jumin_no", "java_field": "juminNo" },
+          { "column_name": "emp_nm", "java_field": "empNm" }
         ]
       }
     }
   ]
 }
 ```
+
+**★ Note:** No `getter`/`setter` fields - the exact `java_field` is taken from resultMap mapping.
 
 ---
 
@@ -363,6 +369,12 @@ When SQL uses `SELECT *` or `SELECT t.*`:
 
 ## Start Extraction Now
 
-Analyze the provided SQL queries and VO context.
+Analyze the provided SQL queries using the inline field mappings shown with each query.
+
+**Key Points:**
+- Each query has a "Relevant Field Mappings for Target Columns" section - use it directly
+- For SELECT queries: mappings show `Column X → Java field Y` format
+- For INSERT/UPDATE queries: use `#{fieldName}` patterns from SQL
+- Do NOT include getter/setter - resultMap provides the mapping directly
 
 **REMINDER: Output ONLY the JSON object. Start directly with `{` and end with `}`.**

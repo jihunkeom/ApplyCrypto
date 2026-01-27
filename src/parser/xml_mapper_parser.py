@@ -17,6 +17,22 @@ from models.table_access_info import TableAccessInfo
 
 
 @dataclass
+class ResultMapFieldMapping:
+    """
+    resultMap 내부 <result> 태그의 필드 매핑 정보
+
+    Attributes:
+        result_map_id: resultMap id (SELECT에서 참조)
+        type_class: resultMap의 type 속성 (VO 클래스)
+        field_mappings: (java_field, db_column) 튜플 리스트
+    """
+
+    result_map_id: str
+    type_class: str
+    field_mappings: List[Tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
 class SQLQuery:
     """
     SQL 쿼리 정보를 저장하는 데이터 모델
@@ -29,6 +45,8 @@ class SQLQuery:
         result_type: resultType 속성 또는 resultMap의 type 속성
         result_map: resultMap 속성 (resultMap 태그의 id)
         namespace: Mapper 네임스페이스
+        result_field_mappings: SELECT용 (java_field, db_column) 매핑 리스트 (resultMap에서 추출)
+        parameter_field_mappings: INSERT/UPDATE용 #{fieldName} 패턴 리스트
     """
 
     id: str
@@ -38,6 +56,8 @@ class SQLQuery:
     result_type: Optional[str] = None
     result_map: Optional[str] = None
     namespace: str = ""
+    result_field_mappings: List[Tuple[str, str]] = field(default_factory=list)
+    parameter_field_mappings: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -143,8 +163,8 @@ class XMLMapperParser:
         # 네임스페이스 추출
         namespace = root.get("namespace", "")
 
-        # resultMap 태그에서 type 정보 추출 (id -> type 매핑)
-        result_map_types = self._extract_result_map_types(root)
+        # resultMap 태그에서 전체 정보 추출 (id -> ResultMapFieldMapping)
+        result_map_info = self._extract_result_map_info(root)
 
         # SQL 태그 찾기
         sql_tags = ["select", "insert", "update", "delete"]
@@ -156,7 +176,7 @@ class XMLMapperParser:
 
             for element in elements:
                 sql_query = self._extract_sql_from_element(
-                    element, tag_name.upper(), namespace, result_map_types
+                    element, tag_name.upper(), namespace, result_map_info
                 )
                 if sql_query:
                     sql_queries.append(sql_query)
@@ -165,7 +185,7 @@ class XMLMapperParser:
 
     def _extract_result_map_types(self, root: etree.Element) -> Dict[str, str]:
         """
-        resultMap 태그에서 id와 type 매핑 추출
+        resultMap 태그에서 id와 type 매핑 추출 (하위 호환용)
 
         Args:
             root: XML 루트 요소
@@ -173,7 +193,22 @@ class XMLMapperParser:
         Returns:
             Dict[str, str]: resultMap id -> type 매핑
         """
-        result_map_types = {}
+        result_map_info = self._extract_result_map_info(root)
+        return {rm_id: rm.type_class for rm_id, rm in result_map_info.items()}
+
+    def _extract_result_map_info(
+        self, root: etree.Element
+    ) -> Dict[str, ResultMapFieldMapping]:
+        """
+        resultMap 태그에서 id, type, 그리고 내부 <result> 필드 매핑 추출
+
+        Args:
+            root: XML 루트 요소
+
+        Returns:
+            Dict[str, ResultMapFieldMapping]: resultMap id -> ResultMapFieldMapping
+        """
+        result_map_info: Dict[str, ResultMapFieldMapping] = {}
 
         # resultMap 태그 찾기
         result_maps = root.xpath(".//resultMap")
@@ -182,20 +217,45 @@ class XMLMapperParser:
             result_map_id = result_map.get("id")
             result_map_type = result_map.get("type")
 
-            if result_map_id and result_map_type:
-                result_map_types[result_map_id] = result_map_type
-                self.logger.debug(
-                    f"resultMap 발견: id={result_map_id}, type={result_map_type}"
-                )
+            if not result_map_id:
+                continue
 
-        return result_map_types
+            # <result> 태그에서 필드 매핑 추출
+            field_mappings: List[Tuple[str, str]] = []
+
+            # <result property="..." column="..."/> 태그 처리
+            for result_tag in result_map.xpath(".//result"):
+                property_name = result_tag.get("property")
+                column_name = result_tag.get("column")
+                if property_name and column_name:
+                    field_mappings.append((property_name, column_name))
+
+            # <id property="..." column="..."/> 태그 처리 (Primary Key)
+            for id_tag in result_map.xpath(".//id"):
+                property_name = id_tag.get("property")
+                column_name = id_tag.get("column")
+                if property_name and column_name:
+                    field_mappings.append((property_name, column_name))
+
+            result_map_info[result_map_id] = ResultMapFieldMapping(
+                result_map_id=result_map_id,
+                type_class=result_map_type or "",
+                field_mappings=field_mappings,
+            )
+
+            self.logger.debug(
+                f"resultMap 발견: id={result_map_id}, type={result_map_type}, "
+                f"필드 매핑 {len(field_mappings)}개"
+            )
+
+        return result_map_info
 
     def _extract_sql_from_element(
         self,
         element: etree.Element,
         query_type: str,
         namespace: str,
-        result_map_types: Dict[str, str] = None,
+        result_map_info: Dict[str, ResultMapFieldMapping] = None,
     ) -> Optional[SQLQuery]:
         """
         XML 요소에서 SQL 쿼리 추출
@@ -204,13 +264,13 @@ class XMLMapperParser:
             element: XML 요소
             query_type: 쿼리 타입
             namespace: 네임스페이스
-            result_map_types: resultMap id -> type 매핑
+            result_map_info: resultMap id -> ResultMapFieldMapping 매핑
 
         Returns:
             Optional[SQLQuery]: SQL 쿼리 정보
         """
-        if result_map_types is None:
-            result_map_types = {}
+        if result_map_info is None:
+            result_map_info = {}
 
         # id 속성 추출
         query_id = element.get("id", "")
@@ -223,13 +283,22 @@ class XMLMapperParser:
         result_type = element.get("resultType")
         result_map = element.get("resultMap")
 
-        # resultMap이 지정된 경우, resultMap 태그에서 type 추출
-        if result_map and not result_type:
-            # resultMap id로 type 찾기
-            if result_map in result_map_types:
-                result_type = result_map_types[result_map]
+        # 필드 매핑 초기화
+        result_field_mappings: List[Tuple[str, str]] = []
+        parameter_field_mappings: List[str] = []
+
+        # resultMap이 지정된 경우, resultMap 태그에서 type과 필드 매핑 추출
+        if result_map:
+            if result_map in result_map_info:
+                rm_info = result_map_info[result_map]
+                if not result_type:
+                    result_type = rm_info.type_class
+                # SELECT 쿼리의 경우 result 필드 매핑 추출
+                if query_type == "SELECT":
+                    result_field_mappings = rm_info.field_mappings.copy()
                 self.logger.debug(
-                    f"resultMap '{result_map}'에서 type 추출: {result_type}"
+                    f"resultMap '{result_map}'에서 type 추출: {result_type}, "
+                    f"필드 매핑 {len(result_field_mappings)}개"
                 )
             else:
                 self.logger.warning(f"resultMap '{result_map}'를 찾을 수 없습니다.")
@@ -241,6 +310,10 @@ class XMLMapperParser:
             self.logger.warning(f"SQL 태그 '{query_id}'에 쿼리가 없습니다.")
             return None
 
+        # INSERT/UPDATE 쿼리의 경우 #{fieldName} 패턴 추출
+        if query_type in ("INSERT", "UPDATE"):
+            parameter_field_mappings = self.extract_mybatis_parameters(sql_text)
+
         return SQLQuery(
             id=query_id,
             query_type=query_type,
@@ -249,6 +322,8 @@ class XMLMapperParser:
             result_type=result_type,
             result_map=result_map,
             namespace=namespace,
+            result_field_mappings=result_field_mappings,
+            parameter_field_mappings=parameter_field_mappings,
         )
 
     def _extract_text_content(self, element: etree.Element) -> str:
@@ -616,6 +691,8 @@ class XMLMapperParser:
                 "result_type": q.result_type,
                 "result_map": q.result_map,
                 "namespace": q.namespace,
+                "result_field_mappings": q.result_field_mappings,
+                "parameter_field_mappings": q.parameter_field_mappings,
             }
             for q in sql_queries
         ]

@@ -113,12 +113,16 @@ class MyBatisSQLExtractor(SQLExtractor):
                     parameter_type = self._extract_generic_inner_type(query.get("parameter_type"))
                     result_type = self._extract_generic_inner_type(query.get("result_type"))
                     result_map = self._extract_generic_inner_type(query.get("result_map"))
-                    
+
                     strategy_specific = {
                         "namespace": query.get("namespace", ""),
                         "parameter_type": parameter_type,
                         "result_type": result_type,
                         "result_map": result_map,
+                        # resultMap 내부 필드 매핑 (SELECT용)
+                        "result_field_mappings": query.get("result_field_mappings", []),
+                        # SQL 내 #{fieldName} 패턴 (INSERT/UPDATE용)
+                        "parameter_field_mappings": query.get("parameter_field_mappings", []),
                     }
 
                     sql_queries.append(
